@@ -2,10 +2,12 @@ package com.notirecover.app.ui.screen
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -18,12 +20,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.notirecover.app.data.model.ConversationEntity
 import com.notirecover.app.data.model.MessageEntity
 import com.notirecover.app.ui.theme.*
+import com.notirecover.app.util.ExportChatHelper
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -37,7 +41,7 @@ fun ChatDetailScreen(
     onDeleteConversation: () -> Unit = {},
     onDeleteMessage: (MessageEntity) -> Unit = {}
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var messageToDelete by remember { mutableStateOf<MessageEntity?>(null) }
 
@@ -73,7 +77,7 @@ fun ChatDetailScreen(
                 },
                 actions = {
                     IconButton(onClick = {
-                        com.notirecover.app.util.ExportChatHelper.exportChatAsHtml(context, conversation, messages)
+                        ExportChatHelper.exportChatAsHtml(context, conversation, messages)
                     }) {
                         Icon(
                             imageVector = Icons.Default.Share,
@@ -111,24 +115,47 @@ fun ChatDetailScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(messages, key = { it.id }) { message ->
-                    MessageBubble(
-                        message = message,
-                        onDeleteClick = { messageToDelete = message }
-                    )
+                    // Baris Pesan: Bubble di sebelah kiri/tengah dan Tombol Hapus tepat di sebelah kanan bubble
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Box(modifier = Modifier.weight(1f)) {
+                            MessageBubble(message = message)
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Tombol Hapus Satuan di Sebelah Kanan Bubble Chat
+                        IconButton(
+                            onClick = { messageToDelete = message },
+                            modifier = Modifier
+                                .size(34.dp)
+                                .background(Color(0xFFF1F5F9), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Hapus Pesan",
+                                tint = Color(0xFF94A3B8),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        // Dialog Hapus Semua Pesan
+        // Dialog Konfirmasi Hapus Semua Pesan
         if (showDeleteAllDialog) {
             AlertDialog(
                 onDismissRequest = { showDeleteAllDialog = false },
                 title = { Text("Hapus Semua Riwayat?", fontWeight = FontWeight.Bold) },
-                text = { Text("Semua pesan dan foto yang tersimpan dari percakapan ini akan dihapus permanen.") },
+                text = { Text("Semua pesan dan foto yang tersimpan dari percakapan '${conversation.chatTitle}' akan dihapus permanen.") },
                 confirmButton = {
                     Button(
                         onClick = {
@@ -148,12 +175,13 @@ fun ChatDetailScreen(
             )
         }
 
-        // Dialog Hapus Pesan Tunggal
+        // Dialog Konfirmasi Hapus Pesan Tunggal
         messageToDelete?.let { msg ->
+            val previewText = if (msg.messageText.length > 50) msg.messageText.take(50) + "..." else msg.messageText
             AlertDialog(
                 onDismissRequest = { messageToDelete = null },
                 title = { Text("Hapus Pesan Ini?", fontWeight = FontWeight.Bold) },
-                text = { Text("Pesan ini akan dihapus dari riwayat ChatRestore.") },
+                text = { Text("Pesan '$previewText' akan dihapus permanen dari riwayat percakapan.") },
                 confirmButton = {
                     Button(
                         onClick = {
@@ -177,8 +205,7 @@ fun ChatDetailScreen(
 
 @Composable
 fun MessageBubble(
-    message: MessageEntity,
-    onDeleteClick: () -> Unit = {}
+    message: MessageEntity
 ) {
     val timeReceived = remember(message.receivedAt) {
         SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.receivedAt))
@@ -210,38 +237,24 @@ fun MessageBubble(
             Column(modifier = Modifier.padding(12.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = Color(0xFFDC2626),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (bitmap != null) "FOTO INI DIHAPUS OLEH PENGIRIM" else "PESAN INI DIHAPUS OLEH PENGIRIM",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFDC2626)
-                        )
-                    }
-                    IconButton(
-                        onClick = onDeleteClick,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Hapus Pesan",
-                            tint = Color(0xFF991B1B),
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = Color(0xFFDC2626),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (bitmap != null) "FOTO INI DIHAPUS OLEH PENGIRIM" else "PESAN INI DIHAPUS OLEH PENGIRIM",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFDC2626)
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 // Jika ada gambar terselamatkan, tampilkan fotonya
                 if (bitmap != null) {
@@ -297,7 +310,7 @@ fun MessageBubble(
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surface,
             shadowElevation = 1.dp,
-            modifier = Modifier.fillMaxWidth(0.9f)
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
                 if (bitmap != null) {
@@ -319,28 +332,12 @@ fun MessageBubble(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = onDeleteClick,
-                        modifier = Modifier.size(20.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Hapus",
-                            tint = Color(0xFF94A3B8),
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                    Text(
-                        text = timeReceived,
-                        fontSize = 10.sp,
-                        color = TextSecondaryLight
-                    )
-                }
+                Text(
+                    text = timeReceived,
+                    fontSize = 10.sp,
+                    color = TextSecondaryLight,
+                    modifier = Modifier.align(Alignment.End)
+                )
             }
         }
     }

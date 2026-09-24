@@ -86,4 +86,5 @@ dependencies {
     implementation(libs.play.billing)
     implementation(libs.play.integrity)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.biometric)
 }

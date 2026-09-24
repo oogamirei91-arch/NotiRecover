@@ -687,7 +687,7 @@ fun StatusGridCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(150.dp)
+                .height(160.dp)
                 .background(Color(0xFFE2E8F0)),
             contentAlignment = Alignment.Center
         ) {
@@ -710,6 +710,33 @@ fun StatusGridCard(
                         tint = Color.White,
                         modifier = Modifier.padding(10.dp)
                     )
+                }
+            }
+
+            // Badge Sumber Akun & Ukuran di Pojok Kiri Atas
+            Surface(
+                shape = RoundedCornerShape(topStart = 12.dp, bottomEnd = 8.dp),
+                color = if (statusItem.sourceApp.contains("Business")) Color(0xFF128C7E) else Color(0xFF25D366),
+                modifier = Modifier.align(Alignment.TopStart)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = if (statusItem.sourceApp.contains("Business")) "WA Biz" else "WA",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp
+                    )
+                    if (statusItem.formattedSize.isNotBlank()) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "• ${statusItem.formattedSize}",
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 9.sp
+                        )
+                    }
                 }
             }
 
@@ -821,29 +848,68 @@ fun StatusPreviewDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surface,
             modifier = Modifier
                 .fillMaxWidth()
                 .wrapContentHeight()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
+                // Header Identitas Pengunggah / Akun
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (statusItem.isVideo) "Video Status" else "Foto Status",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                        Text(
-                            text = if (isDownloaded) "Tersimpan di Galeri ChatRestore" else "Status WhatsApp Aktif",
-                            fontSize = 11.sp,
-                            color = Color(0xFF0369A1)
-                        )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (statusItem.sourceApp.contains("Business")) Color(0xFF128C7E) else Color(0xFF25D366),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = if (statusItem.isVideo) Icons.Default.Videocam else Icons.Default.Image,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Column {
+                            Text(
+                                text = if (statusItem.isVideo) "Video Status Teman" else "Foto Status Teman",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Color(0xFFDCFCE7)
+                                ) {
+                                    Text(
+                                        text = statusItem.sourceApp,
+                                        color = Color(0xFF166534),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 10.sp,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isDownloaded) "Tersimpan" else "Incognito",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF0284C7),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
                     }
 
                     IconButton(onClick = onDelete) {
@@ -857,14 +923,15 @@ fun StatusPreviewDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // Preview Media
                 if (bitmap != null) {
                     Image(
                         bitmap = bitmap.asImageBitmap(),
                         contentDescription = "Preview Status",
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 350.dp)
-                            .clip(RoundedCornerShape(8.dp)),
+                            .heightIn(max = 300.dp)
+                            .clip(RoundedCornerShape(12.dp)),
                         contentScale = ContentScale.Fit
                     )
                 } else if (statusItem.isVideo) {
@@ -872,39 +939,103 @@ fun StatusPreviewDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(200.dp)
-                            .background(Color.Black, RoundedCornerShape(8.dp)),
+                            .background(Color.Black, RoundedCornerShape(12.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
-                            Text("Video Status: ${statusItem.name}", color = Color.White, fontSize = 12.sp)
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(52.dp))
+                            Text(
+                                text = "Video Status WhatsApp",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
+                // Detail Informasi File & Waktu
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFFF8FAFC),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("🕒 Waktu Dilihat", fontSize = 11.sp, color = TextSecondaryLight)
+                            Text(statusItem.formattedDate, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("📦 Ukuran & Tipe", fontSize = 11.sp, color = TextSecondaryLight)
+                            Text(
+                                text = "${statusItem.formattedSize} • ${if (statusItem.isVideo) "Video MP4" else "Foto HD"}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Tombol Aksi
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Tombol Bagikan / Repost
                     OutlinedButton(
-                        onClick = onDismiss,
+                        onClick = {
+                            try {
+                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = if (statusItem.isVideo) "video/*" else "image/*"
+                                    putExtra(android.content.Intent.EXTRA_STREAM, statusItem.uri)
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(android.content.Intent.createChooser(shareIntent, "Bagikan Status"))
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Gagal membagikan status", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("Tutup")
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Bagikan", fontSize = 12.sp)
                     }
+
                     if (!isDownloaded) {
                         Button(
                             onClick = {
                                 onSave()
                                 onDismiss()
                             },
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Simpan")
+                            Text("Simpan", fontSize = 12.sp)
+                        }
+                    } else {
+                        Button(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Tutup", fontSize = 12.sp)
                         }
                     }
                 }

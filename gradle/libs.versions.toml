@@ -32,6 +32,7 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 play-billing = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "playBilling" }
 play-integrity = { group = "com.google.android.play", name = "integrity", version.ref = "playIntegrity" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+androidx-biometric = { group = "androidx.biometric", name = "biometric", version = "1.2.0-alpha05" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

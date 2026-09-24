@@ -21,17 +21,41 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.fragment.app.FragmentActivity
 import com.notirecover.app.data.preference.AppPreferences
 import com.notirecover.app.ui.theme.PrimaryBlue
+import com.notirecover.app.util.BiometricHelper
 
 @Composable
 fun AppLockScreen(
     onUnlockSuccess: () -> Unit
 ) {
     val context = LocalContext.current
+    val activity = context as? FragmentActivity
     val prefs = remember { AppPreferences(context) }
     var enteredPin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun launchBiometricPrompt() {
+        if (activity != null && prefs.useBiometric && BiometricHelper.isBiometricAvailable(activity)) {
+            BiometricHelper.authenticate(
+                activity = activity,
+                title = "Kunci Aplikasi ChatRestore",
+                subtitle = "Pindai sidik jari atau gunakan kunci layar HP Anda",
+                onSuccess = {
+                    onUnlockSuccess()
+                },
+                onError = { err ->
+                    errorMessage = err
+                }
+            )
+        }
+    }
+
+    // Luncurkan sensor sidik jari otomatis saat layar terkunci muncul pertama kali
+    LaunchedEffect(Unit) {
+        launchBiometricPrompt()
+    }
 
     fun handleKeyInput(num: String) {
         if (enteredPin.length < 4) {
@@ -96,7 +120,7 @@ fun AppLockScreen(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Masukkan 4-digit PIN keamanan Anda",
+                text = "Masukkan 4-digit PIN atau gunakan Sidik Jari",
                 fontSize = 13.sp,
                 color = Color(0xFF64748B)
             )
@@ -160,8 +184,7 @@ fun AppLockScreen(
                                     IconButton(
                                         onClick = {
                                             if (prefs.useBiometric) {
-                                                // Simulasi Biometrik Langsung Berhasil untuk Pengguna Terverifikasi
-                                                onUnlockSuccess()
+                                                launchBiometricPrompt()
                                             } else {
                                                 Toast.makeText(context, "Buka dengan PIN Anda", Toast.LENGTH_SHORT).show()
                                             }
