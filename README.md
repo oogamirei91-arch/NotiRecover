@@ -1,4 +1,4 @@
-# NotiRecover - Universal Social Media Deleted Chat Recovery
+# ChatRestore - Universal Social Media Deleted Chat Recovery
 
 Aplikasi Android untuk memantau, mencatat, dan memulihkan pesan media sosial (WhatsApp, Instagram, Telegram, Messenger) yang dihapus oleh pengirim via *Notification Listener* dengan proteksi anti-modifikasi tingkat tinggi.
 

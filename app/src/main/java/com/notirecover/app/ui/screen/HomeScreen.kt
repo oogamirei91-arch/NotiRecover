@@ -59,7 +59,7 @@ fun HomeScreen(
                 title = {
                     Column {
                         Text(
-                            text = "NotiRecover",
+                            text = "ChatRestore",
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp
                         )

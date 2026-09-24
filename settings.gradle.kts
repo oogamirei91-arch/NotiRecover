@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "NotiRecover"
+rootProject.name = "ChatRestore"
 include(":app")
