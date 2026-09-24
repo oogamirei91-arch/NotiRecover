@@ -8,6 +8,7 @@ plugins {
 android {
     namespace = "com.notirecover.app"
     compileSdk = 35
+    ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "com.notirecover.app"
@@ -18,11 +19,10 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Konfigurasi NDK untuk Native C++ Security
         externalNativeBuild {
             cmake {
                 cppFlags += "-std=c++17"
-                cppFlags += "-fvisibility=hidden" // Sembunyikan simbol internal agar sulit di-reverse engineer
+                cppFlags += "-fvisibility=hidden"
             }
         }
         ndk {
@@ -38,7 +38,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug") // Ganti ke release keystore saat rilis
+            signingConfig = signingConfigs.getByName("debug")
         }
         debug {
             isMinifyEnabled = false
@@ -46,7 +46,6 @@ android {
         }
     }
 
-    // Hubungkan CMakeLists.txt
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
@@ -77,7 +76,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
 
-    // Room Database (Penyimpanan Chat Lokal)
+    // Room Database
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
