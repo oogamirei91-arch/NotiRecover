@@ -97,10 +97,6 @@ object StatusSaverHelper {
      * Memindai DocumentFile secara rekursif hingga kedalaman 4 folder
      * agar file di dalam .Statuses selalu ditemukan meskipun user memilih folder induk.
      */
-    /**
-     * Memindai DocumentFile secara rekursif hingga kedalaman 4 folder
-     * agar file di dalam .Statuses selalu ditemukan meskipun user memilih folder induk.
-     */
     private fun scanDocTreeForStatuses(doc: DocumentFile, depth: Int = 0): List<StatusMediaItem> {
         if (depth > 4) return emptyList()
         val list = mutableListOf<StatusMediaItem>()
@@ -214,9 +210,6 @@ object StatusSaverHelper {
         } catch (e: Exception) {
             Log.e(TAG, "Error saat direct scan", e)
         }
-
-        return result.sortedByDescending { it.lastModified }
-    }
 
         return result.sortedByDescending { it.lastModified }
     }
