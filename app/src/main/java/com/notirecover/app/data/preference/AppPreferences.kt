@@ -28,7 +28,7 @@ class AppPreferences(context: Context) {
     // FITUR PRO & MONETISASI GOOGLE PLAY
     // ==========================================
     var isProUser: Boolean
-        get() = prefs.getBoolean("is_pro_user", false)
+        get() = prefs.getBoolean("is_pro_user", true)
         set(value) = prefs.edit().putBoolean("is_pro_user", value).apply()
 
     // Kunci Aplikasi & Biometrik
