@@ -70,31 +70,56 @@ object StatusSaverHelper {
     }
 
     /**
+     * Memindai DocumentFile secara rekursif hingga kedalaman 4 folder
+     * agar file di dalam .Statuses selalu ditemukan meskipun user memilih folder induk.
+     */
+    private fun scanDocTreeForStatuses(doc: DocumentFile, depth: Int = 0): List<StatusMediaItem> {
+        if (depth > 4) return emptyList()
+        val list = mutableListOf<StatusMediaItem>()
+        try {
+            val files = doc.listFiles()
+            for (file in files) {
+                val name = file.name.orEmpty()
+                if (file.isDirectory) {
+                    // Cari masuk ke subfolder (misal: WhatsApp, Media, .Statuses)
+                    list.addAll(scanDocTreeForStatuses(file, depth + 1))
+                } else if (file.isFile && file.length() > 0 && !name.startsWith(".nomedia")) {
+                    val lower = name.lowercase()
+                    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png") || lower.endsWith(".mp4")) {
+                        val isVideo = lower.endsWith(".mp4")
+                        list.add(
+                            StatusMediaItem(
+                                uri = file.uri,
+                                name = name,
+                                isVideo = isVideo,
+                                lastModified = file.lastModified()
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scanning doc at depth $depth", e)
+        }
+        return list
+    }
+
+    /**
      * Mengambil daftar foto & video status menggunakan gabungan SAF DocumentFile dan Direct Storage.
      */
     fun getAllStatuses(context: Context): List<StatusMediaItem> {
         val result = mutableListOf<StatusMediaItem>()
 
-        // 1. Coba baca via SAF DocumentFile jika pengguna sudah memilih folder
+        // 1. Baca via SAF DocumentFile jika pengguna sudah menghubungkan folder
         val treeUri = getSavedTreeUri(context)
         if (treeUri != null) {
             try {
                 val rootDoc = DocumentFile.fromTreeUri(context, treeUri)
-                if (rootDoc != null && rootDoc.exists() && rootDoc.isDirectory) {
-                    for (file in rootDoc.listFiles()) {
-                        val name = file.name.orEmpty().lowercase()
-                        if ((name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".mp4")) &&
-                            !name.startsWith(".nomedia") && file.length() > 0
-                        ) {
-                            val isVideo = name.endsWith(".mp4")
-                            result.add(
-                                StatusMediaItem(
-                                    uri = file.uri,
-                                    name = file.name ?: "status",
-                                    isVideo = isVideo,
-                                    lastModified = file.lastModified()
-                                )
-                            )
+                if (rootDoc != null && rootDoc.exists()) {
+                    val safItems = scanDocTreeForStatuses(rootDoc)
+                    safItems.forEach { item ->
+                        if (result.none { it.name == item.name }) {
+                            result.add(item)
                         }
                     }
                 }
@@ -103,38 +128,44 @@ object StatusSaverHelper {
             }
         }
 
-        // 2. Fallback: Scan direct file paths (untuk Android 10 atau HP yang mengizinkan)
+        // 2. Scan direct file paths (Mendukung Android biasa, Dual App / Clone, & WA Business)
         try {
-            val storageRoot = Environment.getExternalStorageDirectory()
-            val possiblePaths = listOf(
-                File(storageRoot, "Android/media/com.whatsapp/WhatsApp/Media/.Statuses"),
-                File(storageRoot, "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/.Statuses"),
-                File(storageRoot, "WhatsApp/Media/.Statuses"),
-                File("/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses"),
-                File("/storage/emulated/0/WhatsApp/Media/.Statuses")
+            val storageRoots = listOf(
+                Environment.getExternalStorageDirectory(),
+                File("/storage/emulated/0"),
+                File("/storage/emulated/999"), // Xiaomi Dual App / Parallel Space
+                File("/storage/emulated/10")   // Samsung Dual Messenger / Work Profile
             )
 
-            for (dir in possiblePaths) {
-                if (dir.exists() && dir.isDirectory) {
-                    val files = dir.listFiles()
-                    if (files != null) {
-                        for (file in files) {
-                            val name = file.name.lowercase()
-                            if ((name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".mp4")) &&
-                                !name.startsWith(".nomedia") && file.length() > 0
-                            ) {
-                                val isVideo = name.endsWith(".mp4")
-                                val fileUri = Uri.fromFile(file)
-                                if (result.none { it.name == file.name }) {
-                                    result.add(
-                                        StatusMediaItem(
-                                            uri = fileUri,
-                                            name = file.name,
-                                            isVideo = isVideo,
-                                            lastModified = file.lastModified(),
-                                            file = file
+            val relativePaths = listOf(
+                "Android/media/com.whatsapp/WhatsApp/Media/.Statuses",
+                "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/.Statuses",
+                "WhatsApp/Media/.Statuses",
+                "WhatsApp Business/Media/.Statuses"
+            )
+
+            for (root in storageRoots) {
+                if (root.exists()) {
+                    for (rel in relativePaths) {
+                        val dir = File(root, rel)
+                        if (dir.exists() && dir.isDirectory) {
+                            dir.listFiles()?.forEach { file ->
+                                val name = file.name.lowercase()
+                                if ((name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".mp4")) &&
+                                    !name.startsWith(".nomedia") && file.length() > 0
+                                ) {
+                                    val isVideo = name.endsWith(".mp4")
+                                    if (result.none { it.name == file.name }) {
+                                        result.add(
+                                            StatusMediaItem(
+                                                uri = Uri.fromFile(file),
+                                                name = file.name,
+                                                isVideo = isVideo,
+                                                lastModified = file.lastModified(),
+                                                file = file
+                                            )
                                         )
-                                    )
+                                    }
                                 }
                             }
                         }

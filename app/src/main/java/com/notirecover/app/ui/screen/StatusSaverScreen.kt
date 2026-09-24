@@ -43,12 +43,17 @@ fun StatusSaverScreen() {
     var downloadedList by remember { mutableStateOf(emptyList<StatusMediaItem>()) }
     var selectedStatusForPreview by remember { mutableStateOf<StatusMediaItem?>(null) }
     var statusToDelete by remember { mutableStateOf<StatusMediaItem?>(null) }
-    var hasFolderConnected by remember { mutableStateOf(StatusSaverHelper.getSavedTreeUri(context) != null) }
+    
+    var hasAllFilesPermission by remember { mutableStateOf(PermissionHelper.hasAllFilesAccess()) }
+    var hasFolderConnected by remember {
+        mutableStateOf(PermissionHelper.hasAllFilesAccess() || StatusSaverHelper.getSavedTreeUri(context) != null)
+    }
 
     fun refreshStatuses() {
+        hasAllFilesPermission = PermissionHelper.hasAllFilesAccess()
         statusList = StatusSaverHelper.getAllStatuses(context)
         downloadedList = StatusSaverHelper.getDownloadedStatuses(context)
-        hasFolderConnected = StatusSaverHelper.getSavedTreeUri(context) != null || statusList.isNotEmpty()
+        hasFolderConnected = hasAllFilesPermission || StatusSaverHelper.getSavedTreeUri(context) != null || statusList.isNotEmpty()
     }
 
     // Launcher Pemilih Folder SAF Resmi Android
@@ -61,6 +66,12 @@ fun StatusSaverScreen() {
             refreshStatuses()
             Toast.makeText(context, "Folder WhatsApp Berhasil Dihubungkan! 🎉", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    // Auto-refresh saat pengguna kembali ke aplikasi
+    DisposableEffect(Unit) {
+        refreshStatuses()
+        onDispose { }
     }
 
     LaunchedEffect(Unit) {
@@ -78,7 +89,7 @@ fun StatusSaverScreen() {
                             fontSize = 18.sp
                         )
                         Text(
-                            text = if (selectedTab == 0) "Status Teman (Incognito)" else "${downloadedList.size} Status Tersimpan",
+                            text = if (selectedTab == 0) "${statusList.size} Status Terdeteksi (Incognito)" else "${downloadedList.size} Status Tersimpan",
                             fontSize = 12.sp,
                             color = TextSecondaryLight
                         )
@@ -104,7 +115,10 @@ fun StatusSaverScreen() {
             ) {
                 Tab(
                     selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
+                    onClick = {
+                        selectedTab = 0
+                        refreshStatuses()
+                    },
                     text = { Text("Status WhatsApp", fontWeight = FontWeight.SemiBold) }
                 )
                 Tab(
@@ -128,8 +142,8 @@ fun StatusSaverScreen() {
                         .fillMaxSize()
                         .padding(horizontal = 16.dp)
                 ) {
-                    // Banner Hubungkan Folder WhatsApp (Jika Belum Terhubung di Android 11+)
-                    if (!hasFolderConnected) {
+                    // Banner Izin Akses Status (Jika Belum Terhubung)
+                    if (!hasFolderConnected && !hasAllFilesPermission) {
                         Surface(
                             shape = RoundedCornerShape(14.dp),
                             color = Color(0xFFFFFBEB),
@@ -146,7 +160,7 @@ fun StatusSaverScreen() {
                                     )
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Text(
-                                        text = "Hubungkan Folder WhatsApp",
+                                        text = "Akses Penyimpanan Status WA",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
                                         color = Color(0xFF92400E)
@@ -154,21 +168,31 @@ fun StatusSaverScreen() {
                                 }
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "Klik tombol di bawah lalu tekan 'Gunakan Folder Ini' agar status dapat terbaca otomatis.",
+                                    text = "Pilih salah satu metode di bawah agar ChatRestore dapat memindai folder status WhatsApp Anda secara otomatis:",
                                     fontSize = 12.sp,
                                     color = Color(0xFFB45309),
                                     lineHeight = 16.sp
                                 )
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Button(
+                                    onClick = { PermissionHelper.openAllFilesAccessSettings(context) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Security, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("⚡ Izinkan Akses File (Rekomendasi)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedButton(
                                     onClick = { folderPickerLauncher.launch(null) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
                                     shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Icon(Icons.Default.Folder, contentDescription = null)
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Pilih Folder WhatsApp", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("📁 Atau Pilih Folder WhatsApp Manual", fontSize = 12.sp)
                                 }
                             }
                         }
@@ -179,28 +203,50 @@ fun StatusSaverScreen() {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(24.dp),
+                                .padding(20.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0xFFEFF6FF),
+                                    modifier = Modifier.size(64.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.VisibilityOff,
+                                            contentDescription = null,
+                                            tint = Color(0xFF2563EB),
+                                            modifier = Modifier.size(32.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
                                 Text(
-                                    text = "Belum Ada Status Terdeteksi",
+                                    text = "Belum Ada Status WhatsApp Terdeteksi",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "1. Buka aplikasi WhatsApp -> Tonton status teman selama 1–2 detik.\n2. Kembali ke sini dan klik 'Segarkan'.",
+                                    text = "📌 Cara Menampilkan Status:\n1. Buka WhatsApp biasa dan tonton status teman selama 1–2 detik.\n2. Kembali ke ChatRestore lalu klik tombol 'Segarkan' di bawah.",
                                     fontSize = 12.sp,
                                     color = TextSecondaryLight,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                                    lineHeight = 18.sp
                                 )
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    OutlinedButton(onClick = { folderPickerLauncher.launch(null) }) {
+                                    OutlinedButton(onClick = {
+                                        if (!hasAllFilesPermission) {
+                                            PermissionHelper.openAllFilesAccessSettings(context)
+                                        } else {
+                                            folderPickerLauncher.launch(null)
+                                        }
+                                    }) {
                                         Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Pilih Folder")
+                                        Text("Izin / Folder")
                                     }
                                     Button(onClick = { refreshStatuses() }) {
                                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
