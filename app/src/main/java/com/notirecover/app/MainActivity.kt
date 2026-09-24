@@ -29,6 +29,8 @@ import com.notirecover.app.ui.theme.NotiRecoverTheme
 import com.notirecover.app.util.BackupHelper
 import com.notirecover.app.util.LanguageHelper
 import com.notirecover.app.util.PermissionHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 

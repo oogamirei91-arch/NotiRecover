@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.notirecover.app.ui.theme.TextSecondaryLight
+import com.notirecover.app.util.PermissionHelper
 import com.notirecover.app.util.StatusMediaItem
 import com.notirecover.app.util.StatusSaverHelper
 import java.io.InputStream
@@ -39,14 +40,14 @@ import java.io.InputStream
 fun StatusSaverScreen() {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) } // 0: WA Cache, 1: Downloaded
-    var statusList by remember { mutableStateOf(emptyList<StatusMediaItem>()) }
-    var downloadedList by remember { mutableStateOf(emptyList<StatusMediaItem>()) }
+    var statusList by remember { mutableStateOf<List<StatusMediaItem>>(emptyList()) }
+    var downloadedList by remember { mutableStateOf<List<StatusMediaItem>>(emptyList()) }
     var selectedStatusForPreview by remember { mutableStateOf<StatusMediaItem?>(null) }
     var statusToDelete by remember { mutableStateOf<StatusMediaItem?>(null) }
     
-    var hasAllFilesPermission by remember { mutableStateOf(PermissionHelper.hasAllFilesAccess()) }
+    var hasAllFilesPermission by remember { mutableStateOf<Boolean>(PermissionHelper.hasAllFilesAccess()) }
     var hasFolderConnected by remember {
-        mutableStateOf(PermissionHelper.hasAllFilesAccess() || StatusSaverHelper.getSavedTreeUri(context) != null)
+        mutableStateOf<Boolean>(PermissionHelper.hasAllFilesAccess() || StatusSaverHelper.getSavedTreeUri(context) != null)
     }
 
     fun refreshStatuses() {
