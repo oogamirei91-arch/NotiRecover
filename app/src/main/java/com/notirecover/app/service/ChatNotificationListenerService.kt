@@ -48,17 +48,34 @@ class ChatNotificationListenerService : NotificationListenerService() {
         if (!SUPPORTED_PACKAGES.contains(packageName)) return
 
         val notification = sbn.notification ?: return
+
+        // 1. Abaikan notifikasi Ringkasan Grup Android (misal: "3 new messages from 2 chats")
+        if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+            Log.d(TAG, "Mengabaikan notifikasi Group Summary dari $packageName")
+            return
+        }
+
         val extras = notification.extras ?: return
 
         val title = extractTitle(extras) ?: return
-        val messageText = extractMessageText(extras) ?: "📷 [Foto/Media]"
+        val rawMessageText = extractMessageText(extras)
 
-        if (DeletedMessageClassifier.isSystemNotification(title, messageText)) {
+        // 2. Abaikan notifikasi sistem internal
+        if (DeletedMessageClassifier.isSystemNotification(title, rawMessageText)) {
+            Log.d(TAG, "Mengabaikan notifikasi sistem: $title - $rawMessageText")
             return
         }
 
         // Coba ekstrak foto dari notifikasi (jika pengirim mengirim gambar)
         val savedMediaPath = MediaHelper.saveNotificationMedia(applicationContext, notification)
+
+        // 3. Abaikan placeholder "sent a photo" / "3 new messages" jika tidak ada teks asli atau media yang tersimpan
+        if (DeletedMessageClassifier.isPlaceholderOrSummary(title, rawMessageText, savedMediaPath != null)) {
+            Log.d(TAG, "Mengabaikan teks placeholder / counter: '$rawMessageText' dari '$title'")
+            return
+        }
+
+        val messageText = rawMessageText ?: if (savedMediaPath != null) "📷 [Foto]" else return
 
         serviceScope.launch {
             processIncomingNotification(packageName, title, messageText, savedMediaPath)
@@ -99,17 +116,23 @@ class ChatNotificationListenerService : NotificationListenerService() {
             // 3. Simpan sebagai pesan/media baru
             val messageType = if (savedMediaPath != null) MessageEntity.TYPE_IMAGE else MessageEntity.TYPE_TEXT
 
+            val cleanText = if (savedMediaPath != null && (messageText.isBlank() || messageText.lowercase().contains("sent a photo") || messageText.lowercase().contains("mengirim foto"))) {
+                "📷 [Foto]"
+            } else {
+                messageText
+            }
+
             val newMessage = MessageEntity(
                 conversationId = conversationId,
                 senderName = chatTitle,
-                messageText = messageText,
+                messageText = cleanText,
                 mediaUri = savedMediaPath,
                 messageType = messageType,
                 isDeleted = false,
                 receivedAt = System.currentTimeMillis()
             )
             chatDao.insertMessage(newMessage)
-            chatDao.updateLastMessage(conversationId, messageText)
+            chatDao.updateLastMessage(conversationId, cleanText)
         }
     }
 
