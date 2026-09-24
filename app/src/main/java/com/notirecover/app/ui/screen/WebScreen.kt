@@ -7,12 +7,24 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOut
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,31 +36,90 @@ import androidx.compose.ui.viewinterop.AndroidView
 fun WebScreen() {
     var selectedWeb by remember { mutableStateOf("WHATSAPP") }
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    var progress by remember { mutableIntStateOf(0) }
+    var isDesktopMode by remember { mutableStateOf(true) }
 
-    val url = remember(selectedWeb) {
-        if (selectedWeb == "WHATSAPP") "https://web.whatsapp.com" else "https://web.telegram.org/a/"
+    val desktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    val mobileUA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+    fun loadCurrentUrl() {
+        val targetUrl = if (selectedWeb == "WHATSAPP") "https://web.whatsapp.com" else "https://web.telegram.org/k/"
+        webViewInstance?.settings?.userAgentString = if (isDesktopMode) desktopUA else mobileUA
+        webViewInstance?.loadUrl(targetUrl)
     }
-
-    // User Agent Desktop khusus agar WhatsApp Web menampilkan QR Code di Android
-    val desktopUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "Web Medsos Dual Login",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
+                    Column {
+                        Text(
+                            text = "Web Medsos Dual Login",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp
+                        )
+                        Text(
+                            text = if (isDesktopMode) "Mode Tampilan Desktop (QR Code Aktif)" else "Mode Tampilan Mobile",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
                 },
                 actions = {
+                    // Tombol Ganti Mode Desktop / Mobile
+                    IconButton(onClick = {
+                        isDesktopMode = !isDesktopMode
+                        loadCurrentUrl()
+                    }) {
+                        Icon(
+                            imageVector = if (isDesktopMode) Icons.Default.DesktopWindows else Icons.Default.PhoneAndroid,
+                            contentDescription = "Ganti Mode Tampilan",
+                            tint = if (isDesktopMode) Color(0xFF2563EB) else Color(0xFF10B981)
+                        )
+                    }
                     IconButton(onClick = { webViewInstance?.reload() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Muat Ulang")
                     }
                 }
             )
+        },
+        bottomBar = {
+            // Bilah Navigasi Kontrol WebView Cepat
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shadowElevation = 4.dp,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { if (webViewInstance?.canGoBack() == true) webViewInstance?.goBack() },
+                        enabled = webViewInstance?.canGoBack() == true
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Kembali")
+                    }
+
+                    IconButton(
+                        onClick = { if (webViewInstance?.canGoForward() == true) webViewInstance?.goForward() },
+                        enabled = webViewInstance?.canGoForward() == true
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Maju")
+                    }
+
+                    IconButton(onClick = { webViewInstance?.zoomOut() }) {
+                        Icon(Icons.Default.ZoomOut, contentDescription = "Perkecil")
+                    }
+
+                    IconButton(onClick = { webViewInstance?.zoomIn() }) {
+                        Icon(Icons.Default.ZoomIn, contentDescription = "Perbesar")
+                    }
+                }
+            }
         }
     ) { paddingValues ->
         Column(
@@ -64,28 +135,39 @@ fun WebScreen() {
                 Tab(
                     selected = selectedWeb == "WHATSAPP",
                     onClick = {
-                        selectedWeb = "WHATSAPP"
-                        webViewInstance?.loadUrl("https://web.whatsapp.com")
+                        if (selectedWeb != "WHATSAPP") {
+                            selectedWeb = "WHATSAPP"
+                            loadCurrentUrl()
+                        }
                     },
                     text = { Text("WhatsApp Web", fontWeight = FontWeight.SemiBold) }
                 )
                 Tab(
                     selected = selectedWeb == "TELEGRAM",
                     onClick = {
-                        selectedWeb = "TELEGRAM"
-                        webViewInstance?.loadUrl("https://web.telegram.org/a/")
+                        if (selectedWeb != "TELEGRAM") {
+                            selectedWeb = "TELEGRAM"
+                            loadCurrentUrl()
+                        }
                     },
                     text = { Text("Telegram Web", fontWeight = FontWeight.SemiBold) }
                 )
             }
 
-            if (isLoading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            // Indikator Loading Bar Halus
+            AnimatedVisibility(visible = progress in 1..99) {
+                LinearProgressIndicator(
+                    progress = { progress / 100f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFF2563EB)
+                )
             }
 
-            // WebView Container
+            // WebView Responsif
             AndroidView(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f),
                 factory = { context ->
                     WebView(context).apply {
                         layoutParams = ViewGroup.LayoutParams(
@@ -103,28 +185,32 @@ fun WebScreen() {
                             builtInZoomControls = true
                             displayZoomControls = false
                             cacheMode = WebSettings.LOAD_DEFAULT
-                            userAgentString = desktopUserAgent // Paksa Desktop Mode agar WhatsApp Web tidak redirect
+                            userAgentString = desktopUA
+                            textZoom = 100
                         }
+
+                        setInitialScale(100)
 
                         webViewClient = object : WebViewClient() {
                             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                 super.onPageStarted(view, url, favicon)
-                                isLoading = true
                             }
 
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
-                                isLoading = false
                             }
                         }
 
-                        webChromeClient = WebChromeClient()
-                        loadUrl(url)
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                super.onProgressChanged(view, newProgress)
+                                progress = newProgress
+                            }
+                        }
+
+                        loadUrl("https://web.whatsapp.com")
                         webViewInstance = this
                     }
-                },
-                update = { webView ->
-                    // Diperbarui saat URL berubah
                 }
             )
         }

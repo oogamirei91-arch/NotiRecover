@@ -9,14 +9,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.notirecover.app.data.model.ConversationEntity
 import com.notirecover.app.ui.theme.*
+import com.notirecover.app.util.LanguageHelper
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -32,13 +32,15 @@ import java.util.*
 fun HomeScreen(
     conversations: List<ConversationEntity>,
     isServiceEnabled: Boolean,
+    currentLanguage: String = "ID",
     onEnableServiceClick: () -> Unit,
-    onConversationClick: (ConversationEntity) -> Unit
+    onConversationClick: (ConversationEntity) -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") }
 
     val filterOptions = listOf(
-        "ALL" to "Semua",
+        "ALL" to if (currentLanguage == "ID") "Semua" else "All",
         "com.whatsapp" to "WhatsApp",
         "com.instagram.android" to "Instagram",
         "org.telegram.messenger" to "Telegram",
@@ -57,31 +59,57 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = "ChatRestore",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp
-                        )
-                        Text(
-                            text = "Universal Chat & Deleted Log",
-                            fontSize = 12.sp,
-                            color = TextSecondaryLight
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.Transparent,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Image(
+                                painter = androidx.compose.ui.res.painterResource(id = com.notirecover.app.R.drawable.app_logo),
+                                contentDescription = "Logo",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(10.dp))
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "ChatRestore",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 19.sp
+                            )
+                            Text(
+                                text = LanguageHelper.get("app_subtitle", currentLanguage),
+                                fontSize = 11.sp,
+                                color = TextSecondaryLight
+                            )
+                        }
                     }
                 },
                 actions = {
+                    // Badge PRO
                     Surface(
                         color = Color(0xFFFEF3C7),
                         shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.padding(end = 12.dp)
+                        modifier = Modifier.padding(end = 4.dp)
                     ) {
                         Text(
                             text = "👑 PRO",
                             color = Color(0xFFB45309),
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    // Shortcut Roda Gerigi (Pengaturan) di Pojok Kanan Atas
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Pengaturan",
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -93,31 +121,38 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Status Service Card Banner
+            // Banner Status Service
             ServiceStatusBanner(
                 isEnabled = isServiceEnabled,
+                currentLanguage = currentLanguage,
                 onEnableClick = onEnableServiceClick
             )
 
-            // Filter Chips Sosmed
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(filterOptions) { (key, label) ->
-                    FilterChip(
-                        selected = selectedFilter == key,
-                        onClick = { selectedFilter = key },
-                        label = { Text(label) }
-                    )
+            if (conversations.isNotEmpty()) {
+                // Filter Chips Sosmed
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filterOptions) { (key, label) ->
+                        FilterChip(
+                            selected = selectedFilter == key,
+                            onClick = { selectedFilter = key },
+                            label = { Text(label, fontSize = 12.sp) }
+                        )
+                    }
                 }
             }
 
-            // List Percakapan
+            // Konten Utama
             if (filteredList.isEmpty()) {
-                EmptyStateView(isServiceEnabled = isServiceEnabled)
+                WelcomeEmptyStateView(
+                    isServiceEnabled = isServiceEnabled,
+                    currentLanguage = currentLanguage,
+                    onEnableClick = onEnableServiceClick
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -139,52 +174,230 @@ fun HomeScreen(
 @Composable
 fun ServiceStatusBanner(
     isEnabled: Boolean,
+    currentLanguage: String = "ID",
     onEnableClick: () -> Unit
 ) {
+    val isId = currentLanguage == "ID"
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = if (isEnabled) Color(0xFFECFDF5) else Color(0xFFFFFBEB),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = if (isEnabled) Color(0xFFF0FDF4) else Color(0xFFFFFBEB),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (isEnabled) Color(0xFFA7F3D0) else Color(0xFFFDE68A)
+            if (isEnabled) Color(0xFFBBF7D0) else Color(0xFFFDE68A)
         )
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = if (isEnabled) Icons.Default.CheckCircle else Icons.Default.Warning,
-                contentDescription = null,
-                tint = if (isEnabled) AccentGreen else Color(0xFFD97706),
-                modifier = Modifier.size(28.dp)
-            )
+            Surface(
+                shape = CircleShape,
+                color = if (isEnabled) AccentGreen else Color(0xFFD97706),
+                modifier = Modifier.size(36.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isEnabled) Icons.Default.CheckCircle else Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (isEnabled) "Monitoring Aktif" else "Izin Notifikasi Belum Aktif",
+                    text = if (isEnabled) (if (isId) "🟢 Monitoring Aktif" else "🟢 Monitoring Active") else (if (isId) "⚠️ Izin Notifikasi Dibutuhkan" else "⚠️ Notification Permission Needed"),
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
-                    color = if (isEnabled) Color(0xFF065F46) else Color(0xFF92400E)
+                    color = if (isEnabled) Color(0xFF166534) else Color(0xFF92400E)
                 )
                 Text(
-                    text = if (isEnabled) "Siap mendeteksi pesan yang dihapus" else "Aktifkan agar aplikasi bisa mencatat pesan",
-                    fontSize = 12.sp,
-                    color = if (isEnabled) Color(0xFF047857) else Color(0xFFB45309)
+                    text = if (isEnabled) (if (isId) "Siap merekam pesan & foto yang dihapus pengirim" else "Ready to capture deleted messages & photos") else (if (isId) "Aktifkan agar aplikasi dapat mencatat chat masuk" else "Enable access so the app can log incoming chats"),
+                    fontSize = 11.sp,
+                    color = if (isEnabled) Color(0xFF15803D) else Color(0xFFB45309)
                 )
             }
             if (!isEnabled) {
                 Button(
                     onClick = onEnableClick,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("Aktifkan", fontSize = 12.sp)
+                    Text(if (isId) "Aktifkan" else "Enable", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun WelcomeEmptyStateView(
+    isServiceEnabled: Boolean,
+    currentLanguage: String = "ID",
+    onEnableClick: () -> Unit
+) {
+    val isId = currentLanguage == "ID"
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        // Hero Card Selamat Datang
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                shadowElevation = 3.dp
+            ) {
+                Box(
+                    modifier = Modifier
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(Color(0xFF2563EB), Color(0xFF3B82F6))
+                            )
+                        )
+                        .padding(18.dp)
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = if (isId) "👋 Selamat Datang!" else "👋 Welcome!",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = if (isId)
+                                "ChatRestore akan otomatis mencatat dan menyelamatkan pesan serta foto dari WhatsApp, IG, & Telegram yang ditarik/dihapus pengirim."
+                            else
+                                "ChatRestore automatically saves and recovers messages & photos from WhatsApp, IG, and Telegram deleted by the sender.",
+                            color = Color(0xFFDBEAFE),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        // Contoh Simulasi Tampilan Pesan Terhapus
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFFFEF2F2),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isId) "CONTOH PESAN YANG DIHAPUS" else "DELETED MESSAGE EXAMPLE",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFDC2626)
+                            )
+                        }
+                        Text(if (isId) "Dihapus: 10:45" else "Deleted: 10:45", fontSize = 10.sp, color = Color(0xFF991B1B))
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = if (isId) "“Besok kita jadi ketemuan jam 7 malam ya!”" else "“Hey, let's meet tomorrow at 7 PM!”",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF1E293B)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = if (isId) "✨ Pesan asli tetap aman tersimpan di sini meski dihapus di WhatsApp" else "✨ Original text remains safely preserved even when deleted in WhatsApp",
+                        fontSize = 11.sp,
+                        color = Color(0xFF059669),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+
+        // Panduan 3 Langkah
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 1.dp
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = if (isId) "Cara Kerja & Penggunaan:" else "How It Works:",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    StepRow(
+                        number = "1",
+                        title = if (isId) "Pastikan Izin Notifikasi Aktif" else "Ensure Notification Access is Enabled",
+                        desc = if (isId) "Klik tombol 'Aktifkan' di atas untuk mengizinkan aplikasi membaca notifikasi." else "Click 'Enable' above to allow the app to read notifications."
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    StepRow(
+                        number = "2",
+                        title = if (isId) "Gunakan Medsos Seperti Biasa" else "Use Social Media Normally",
+                        desc = if (isId) "Saat ada pesan/foto masuk dari teman, aplikasi akan otomatis menyalinnya." else "When incoming chats/photos arrive, the app logs them instantly."
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    StepRow(
+                        number = "3",
+                        title = if (isId) "Lihat Chat yang Dihapus" else "View Recovered Deleted Chats",
+                        desc = if (isId) "Buka ChatRestore kapan saja untuk melihat teks dan foto yang telah ditarik pengirim." else "Open ChatRestore anytime to view recovered text & media."
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StepRow(number: String, title: String, desc: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Surface(
+            shape = CircleShape,
+            color = Color(0xFFEFF6FF),
+            modifier = Modifier.size(24.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = number,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = PrimaryBlue
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Column {
+            Text(text = title, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(text = desc, fontSize = 11.sp, color = TextSecondaryLight)
         }
     }
 }
@@ -225,7 +438,6 @@ fun ConversationCard(
             modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Avatar Placeholder dengan Badge App
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -290,7 +502,6 @@ fun ConversationCard(
                         modifier = Modifier.weight(1f)
                     )
 
-                    // Badge Pesan Terhapus (Jika Ada)
                     if (conversation.deletedCount > 0) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -319,41 +530,6 @@ fun ConversationCard(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun EmptyStateView(isServiceEnabled: Boolean) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = Icons.Default.DeleteSweep,
-                contentDescription = null,
-                tint = Color(0xFFCBD5E1),
-                modifier = Modifier.size(72.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Belum Ada Pesan Masuk",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = if (isServiceEnabled)
-                    "Kirim atau terima pesan di WhatsApp/IG/Telegram, maka riwayatnya akan otomatis tercatat di sini."
-                else
-                    "Silakan aktifkan Izin Akses Notifikasi di atas agar aplikasi dapat mulai mencatat.",
-                fontSize = 13.sp,
-                color = TextSecondaryLight,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
         }
     }
 }

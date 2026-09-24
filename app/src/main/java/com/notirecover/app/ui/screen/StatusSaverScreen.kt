@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FolderSpecial
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -39,12 +40,13 @@ fun StatusSaverScreen() {
     val context = LocalContext.current
     var statusList by remember { mutableStateOf(emptyList<StatusItem>()) }
     var selectedStatusForPreview by remember { mutableStateOf<StatusItem?>(null) }
-    var isRefreshing by remember { mutableStateOf(false) }
+    var isPermissionGranted by remember { mutableStateOf(StatusSaverHelper.isStoragePermissionGranted(context)) }
 
     fun refreshStatuses() {
-        isRefreshing = true
-        statusList = StatusSaverHelper.getActiveStatuses()
-        isRefreshing = false
+        isPermissionGranted = StatusSaverHelper.isStoragePermissionGranted(context)
+        if (isPermissionGranted) {
+            statusList = StatusSaverHelper.getActiveStatuses()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -82,7 +84,52 @@ fun StatusSaverScreen() {
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Banner Penjelasan Ghost Viewer
+            // Banner Izin Penyimpanan Jika Belum Diizinkan
+            if (!isPermissionGranted) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFFFFBEB),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.FolderSpecial,
+                                contentDescription = null,
+                                tint = Color(0xFFD97706),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Izin Akses Penyimpanan Dibutuhkan",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = Color(0xFF92400E)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Agar aplikasi bisa membaca foto & video status WhatsApp di HP Anda, silakan berikan izin 'Akses Semua File'.",
+                            fontSize = 12.sp,
+                            color = Color(0xFFB45309)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(
+                            onClick = {
+                                StatusSaverHelper.requestStoragePermission(context)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Izinkan Akses Penyimpanan")
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // Banner Ghost Mode
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = Color(0xFFF0F9FF),
@@ -125,7 +172,7 @@ fun StatusSaverScreen() {
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Buka aplikasi WhatsApp -> buka tab Status/Pembaruan sebentar, lalu kembali ke sini dan klik tombol Segarkan (🔄).",
+                            text = "1. Buka aplikasi WhatsApp -> Masuk ke tab Pembaruan / Status sebentar.\n2. Kembali ke sini lalu klik tombol 'Segarkan Status'.",
                             fontSize = 12.sp,
                             color = TextSecondaryLight,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -232,7 +279,6 @@ fun StatusGridCard(
                 }
             }
 
-            // Tombol Cepat Simpan di Pojok Kanan Bawah
             IconButton(
                 onClick = onSaveClick,
                 modifier = Modifier

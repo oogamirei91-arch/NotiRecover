@@ -2,12 +2,13 @@ package com.notirecover.app.util
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.Settings
 import android.util.Log
-import android.widget.Toast
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -22,34 +23,74 @@ object StatusSaverHelper {
 
     private const val TAG = "StatusSaverHelper"
 
-    // Path folder status WhatsApp standar di Android
-    private val STATUS_PATHS = listOf(
-        // Android 11+ Scoped Media Path
-        "/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses",
-        "/storage/emulated/0/Android/media/com.whatsapp.w4b/WhatsApp Business/Media/.Statuses",
-        // Android 10 ke bawah
-        "/storage/emulated/0/WhatsApp/Media/.Statuses",
-        "/storage/emulated/0/WhatsApp Business/Media/.Statuses"
-    )
+    /**
+     * Memeriksa apakah izin akses penyimpanan (All Files Access) sudah diberikan oleh user.
+     */
+    fun isStoragePermissionGranted(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            true
+        }
+    }
 
     /**
-     * Mengambil daftar semua file foto & video status WhatsApp yang sedang aktif.
+     * Membuka halaman pengaturan sistem agar user dapat mengizinkan "Akses Semua File".
+     */
+    fun requestStoragePermission(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(intent)
+            }
+        }
+    }
+
+    /**
+     * Mengambil daftar semua file foto & video status WhatsApp yang sedang aktif di HP.
      */
     fun getActiveStatuses(): List<StatusItem> {
         val result = mutableListOf<StatusItem>()
 
-        for (path in STATUS_PATHS) {
-            val dir = File(path)
+        val storageRoot = Environment.getExternalStorageDirectory()
+
+        val possiblePaths = listOf(
+            // WhatsApp Biasa (Android 11+)
+            File(storageRoot, "Android/media/com.whatsapp/WhatsApp/Media/.Statuses"),
+            // WhatsApp Business (Android 11+)
+            File(storageRoot, "Android/media/com.whatsapp.w4b/WhatsApp Business/Media/.Statuses"),
+            // WhatsApp Biasa (Android 10 ke bawah)
+            File(storageRoot, "WhatsApp/Media/.Statuses"),
+            // WhatsApp Business (Android 10 ke bawah)
+            File(storageRoot, "WhatsApp Business/Media/.Statuses"),
+            // Fallback path
+            File("/storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media/.Statuses"),
+            File("/storage/emulated/0/WhatsApp/Media/.Statuses")
+        )
+
+        for (dir in possiblePaths) {
             if (dir.exists() && dir.isDirectory) {
-                val files = dir.listFiles { file ->
-                    val name = file.name.lowercase()
-                    (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".mp4")) &&
-                            !name.startsWith(".nomedia")
-                }
+                val files = dir.listFiles()
                 if (files != null) {
                     for (file in files) {
-                        val isVideo = file.name.lowercase().endsWith(".mp4")
-                        result.add(StatusItem(file = file, isVideo = isVideo))
+                        val name = file.name.lowercase()
+                        if ((name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".mp4")) &&
+                            !name.startsWith(".nomedia") && file.length() > 0
+                        ) {
+                            val isVideo = name.endsWith(".mp4")
+                            // Hindari duplikat file
+                            if (result.none { it.file.absolutePath == file.absolutePath }) {
+                                result.add(StatusItem(file = file, isVideo = isVideo))
+                            }
+                        }
                     }
                 }
             }
