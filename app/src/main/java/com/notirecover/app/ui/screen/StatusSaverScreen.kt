@@ -82,7 +82,7 @@ fun StatusSaverScreen() {
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Banner Penjelasan Ghost Viewer (Mode Siluman)
+            // Banner Penjelasan Ghost Viewer
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = Color(0xFFF0F9FF),
@@ -125,7 +125,7 @@ fun StatusSaverScreen() {
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Buka aplikasi WhatsApp $\\rightarrow$ buka tab Status/Pembaruan sebentar, lalu kembali ke sini dan klik tombol Segarkan (🔄).",
+                            text = "Buka aplikasi WhatsApp -> buka tab Status/Pembaruan sebentar, lalu kembali ke sini dan klik tombol Segarkan (🔄).",
                             fontSize = 12.sp,
                             color = TextSecondaryLight,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -161,21 +161,182 @@ fun StatusSaverScreen() {
                     }
                 }
             }
+        }
 
-            // Dialog Preview
-            selectedStatusForPreview?.let { item ->
-                StatusPreviewDialog(
-                    statusItem = item,
-                    onDismiss = { selectedStatusForPreview = null },
-                    onSave = {
-                        val success = StatusSaverHelper.saveStatusToGallery(context, item)
-                        if (success) {
-                            Toast.makeText(context, "Berhasil disimpan ke Galeri HP!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "Gagal menyimpan file", Toast.LENGTH_SHORT).show()
+        // Dialog Preview
+        selectedStatusForPreview?.let { item ->
+            StatusPreviewDialog(
+                statusItem = item,
+                onDismiss = { selectedStatusForPreview = null },
+                onSave = {
+                    val success = StatusSaverHelper.saveStatusToGallery(context, item)
+                    if (success) {
+                        Toast.makeText(context, "Berhasil disimpan ke Galeri HP!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Gagal menyimpan file", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun StatusGridCard(
+    statusItem: StatusItem,
+    onClick: () -> Unit,
+    onSaveClick: () -> Unit
+) {
+    val bitmap = remember(statusItem.file.absolutePath) {
+        if (!statusItem.isVideo && statusItem.file.exists()) {
+            BitmapFactory.decodeFile(statusItem.file.absolutePath)
+        } else {
+            null
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        shadowElevation = 2.dp,
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .background(Color(0xFFE2E8F0)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "Status",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (statusItem.isVideo) {
+                Surface(
+                    color = Color.Black.copy(alpha = 0.6f),
+                    shape = CircleShape,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Video",
+                        tint = Color.White,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+            }
+
+            // Tombol Cepat Simpan di Pojok Kanan Bawah
+            IconButton(
+                onClick = onSaveClick,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .size(36.dp)
+                    .background(Color(0xFF2563EB), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = "Simpan",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StatusPreviewDialog(
+    statusItem: StatusItem,
+    onDismiss: () -> Unit,
+    onSave: () -> Unit
+) {
+    val bitmap = remember(statusItem.file.absolutePath) {
+        if (!statusItem.isVideo && statusItem.file.exists()) {
+            BitmapFactory.decodeFile(statusItem.file.absolutePath)
+        } else {
+            null
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = if (statusItem.isVideo) "Video Status WhatsApp" else "Foto Status WhatsApp",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Text(
+                    text = "Ditonton tanpa mengirim notifikasi dilihat",
+                    fontSize = 11.sp,
+                    color = Color(0xFF0369A1)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Preview Status",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 350.dp)
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                } else if (statusItem.isVideo) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp)
+                            .background(Color.Black, RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
+                            Text("File Video: ${statusItem.file.name}", color = Color.White, fontSize = 12.sp)
                         }
                     }
-                )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Tutup")
+                    }
+                    Button(
+                        onClick = {
+                            onSave()
+                            onDismiss()
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Simpan")
+                    }
+                }
             }
         }
     }
