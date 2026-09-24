@@ -67,6 +67,33 @@ interface ChatDao {
     """)
     suspend fun markMessageAsDeleted(messageId: Long, deletedAt: Long = System.currentTimeMillis())
 
+    @Query("DELETE FROM messages WHERE id = :messageId")
+    suspend fun deleteMessage(messageId: Long)
+
+    @Query("DELETE FROM messages WHERE conversationId = :conversationId")
+    suspend fun deleteMessagesForConversation(conversationId: Long)
+
+    @Query("DELETE FROM conversations WHERE id = :conversationId")
+    suspend fun deleteConversationOnly(conversationId: Long)
+
+    @Transaction
+    suspend fun deleteConversation(conversationId: Long) {
+        deleteMessagesForConversation(conversationId)
+        deleteConversationOnly(conversationId)
+    }
+
+    @Query("DELETE FROM messages")
+    suspend fun deleteAllMessages()
+
+    @Query("DELETE FROM conversations")
+    suspend fun deleteAllConversations()
+
+    @Transaction
+    suspend fun deleteAllData() {
+        deleteAllMessages()
+        deleteAllConversations()
+    }
+
     @Transaction
     suspend fun handleDeletedMessageTrigger(conversationId: Long): MessageEntity? {
         val lastMessage = getLastActiveMessage(conversationId)

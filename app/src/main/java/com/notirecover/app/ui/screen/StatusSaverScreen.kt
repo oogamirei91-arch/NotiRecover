@@ -38,12 +38,16 @@ import java.io.InputStream
 @Composable
 fun StatusSaverScreen() {
     val context = LocalContext.current
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: WA Cache, 1: Downloaded
     var statusList by remember { mutableStateOf(emptyList<StatusMediaItem>()) }
+    var downloadedList by remember { mutableStateOf(emptyList<StatusMediaItem>()) }
     var selectedStatusForPreview by remember { mutableStateOf<StatusMediaItem?>(null) }
+    var statusToDelete by remember { mutableStateOf<StatusMediaItem?>(null) }
     var hasFolderConnected by remember { mutableStateOf(StatusSaverHelper.getSavedTreeUri(context) != null) }
 
     fun refreshStatuses() {
         statusList = StatusSaverHelper.getAllStatuses(context)
+        downloadedList = StatusSaverHelper.getDownloadedStatuses(context)
         hasFolderConnected = StatusSaverHelper.getSavedTreeUri(context) != null || statusList.isNotEmpty()
     }
 
@@ -69,12 +73,12 @@ fun StatusSaverScreen() {
                 title = {
                     Column {
                         Text(
-                            text = "Status Saver (Ghost Mode)",
+                            text = "Status Saver",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
                         Text(
-                            text = "Tonton & Simpan Tanpa Ketahuan",
+                            text = if (selectedTab == 0) "Status Teman (Incognito)" else "${downloadedList.size} Status Tersimpan",
                             fontSize = 12.sp,
                             color = TextSecondaryLight
                         )
@@ -92,156 +96,254 @@ fun StatusSaverScreen() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Banner Hubungkan Folder WhatsApp (Jika Belum Terhubung di Android 11+)
-            if (!hasFolderConnected) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFFFFFBEB),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = null,
-                                tint = Color(0xFFD97706),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Hubungkan Folder WhatsApp (Wajib 1x)",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                color = Color(0xFF92400E)
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Agar foto & video status dapat terbaca otomatis di HP Anda, klik tombol di bawah lalu tekan 'Gunakan Folder Ini' pada pop-up sistem Android.",
-                            fontSize = 12.sp,
-                            color = Color(0xFFB45309),
-                            lineHeight = 16.sp
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Button(
-                            onClick = {
-                                folderPickerLauncher.launch(null)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Folder, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Pilih & Hubungkan Folder WhatsApp", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-            }
-
-            // Banner Ghost Mode
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFF0F9FF),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBAE6FD)),
+            // Tab Switcher: Status WA vs Status Tersimpan (Download)
+            TabRow(
+                selectedTabIndex = selectedTab,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.VisibilityOff,
-                        contentDescription = null,
-                        tint = Color(0xFF0284C7),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Tonton status 1-2 detik di WhatsApp agar file terunduh di HP, lalu simpan permanen di sini!",
-                        fontSize = 11.sp,
-                        color = Color(0xFF0369A1)
-                    )
-                }
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("Status WhatsApp", fontWeight = FontWeight.SemiBold) }
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = {
+                        selectedTab = 1
+                        downloadedList = StatusSaverHelper.getDownloadedStatuses(context)
+                    },
+                    text = { Text("Tersimpan (${downloadedList.size})", fontWeight = FontWeight.SemiBold) }
+                )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            if (statusList.isEmpty()) {
-                Box(
+            if (selectedTab == 0) {
+                // ==========================================
+                // TAB 1: STATUS WHATSAPP AKTIF
+                // ==========================================
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(horizontal = 16.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "Belum Ada Status Terdeteksi",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "1. Buka aplikasi WhatsApp -> Tonton status teman selama 1–2 detik.\n2. Kembali ke sini dan klik 'Segarkan Status'.",
-                            fontSize = 12.sp,
-                            color = TextSecondaryLight,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedButton(onClick = { folderPickerLauncher.launch(null) }) {
-                                Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Pilih Folder")
+                    // Banner Hubungkan Folder WhatsApp (Jika Belum Terhubung di Android 11+)
+                    if (!hasFolderConnected) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFFFFFBEB),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.FolderOpen,
+                                        contentDescription = null,
+                                        tint = Color(0xFFD97706),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "Hubungkan Folder WhatsApp",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF92400E)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Klik tombol di bawah lalu tekan 'Gunakan Folder Ini' agar status dapat terbaca otomatis.",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFB45309),
+                                    lineHeight = 16.sp
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = { folderPickerLauncher.launch(null) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Folder, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Pilih Folder WhatsApp", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                }
                             }
-                            Button(onClick = { refreshStatuses() }) {
-                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Segarkan")
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    if (statusList.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "Belum Ada Status Terdeteksi",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "1. Buka aplikasi WhatsApp -> Tonton status teman selama 1–2 detik.\n2. Kembali ke sini dan klik 'Segarkan'.",
+                                    fontSize = 12.sp,
+                                    color = TextSecondaryLight,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    OutlinedButton(onClick = { folderPickerLauncher.launch(null) }) {
+                                        Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Pilih Folder")
+                                    }
+                                    Button(onClick = { refreshStatuses() }) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Segarkan")
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(statusList, key = { it.uri.toString() }) { item ->
+                                StatusGridCard(
+                                    statusItem = item,
+                                    isDownloaded = false,
+                                    onClick = { selectedStatusForPreview = item },
+                                    onSaveClick = {
+                                        val success = StatusSaverHelper.saveStatusToGallery(context, item)
+                                        if (success) {
+                                            refreshStatuses()
+                                            Toast.makeText(context, "Berhasil disimpan ke Galeri HP! 🎉", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Gagal menyimpan file", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                )
                             }
                         }
                     }
                 }
             } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                // ==========================================
+                // TAB 2: STATUS TERSIMPAN (DOWNLOADED)
+                // ==========================================
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
                 ) {
-                    items(statusList, key = { it.uri.toString() }) { item ->
-                        StatusGridCard(
-                            statusItem = item,
-                            onClick = { selectedStatusForPreview = item },
-                            onSaveClick = {
-                                val success = StatusSaverHelper.saveStatusToGallery(context, item)
-                                if (success) {
-                                    Toast.makeText(context, "Berhasil disimpan ke Galeri HP!", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, "Gagal menyimpan file", Toast.LENGTH_SHORT).show()
-                                }
+                    if (downloadedList.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.DownloadDone,
+                                    contentDescription = null,
+                                    tint = Color(0xFF94A3B8),
+                                    modifier = Modifier.size(56.dp)
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Belum Ada Status yang Diunduh",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Status yang Anda unduh dari tab 'Status WhatsApp' atau 'WhatsApp Web' akan tersimpan rapi di sini.",
+                                    fontSize = 12.sp,
+                                    color = TextSecondaryLight,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
                             }
-                        )
+                        }
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(downloadedList, key = { it.uri.toString() }) { item ->
+                                StatusGridCard(
+                                    statusItem = item,
+                                    isDownloaded = true,
+                                    onClick = { selectedStatusForPreview = item },
+                                    onDeleteClick = { statusToDelete = item }
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // Dialog Preview
+        // Dialog Preview Status
         selectedStatusForPreview?.let { item ->
+            val isDownloadedItem = downloadedList.any { it.name == item.name }
             StatusPreviewDialog(
                 statusItem = item,
+                isDownloaded = isDownloadedItem,
                 onDismiss = { selectedStatusForPreview = null },
                 onSave = {
                     val success = StatusSaverHelper.saveStatusToGallery(context, item)
                     if (success) {
-                        Toast.makeText(context, "Berhasil disimpan ke Galeri HP!", Toast.LENGTH_SHORT).show()
+                        refreshStatuses()
+                        Toast.makeText(context, "Berhasil disimpan ke Galeri HP! 🎉", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(context, "Gagal menyimpan file", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onDelete = {
+                    statusToDelete = item
+                }
+            )
+        }
+
+        // Dialog Konfirmasi Hapus Status Downloaded
+        statusToDelete?.let { item ->
+            AlertDialog(
+                onDismissRequest = { statusToDelete = null },
+                title = { Text("Hapus Status Ini?", fontWeight = FontWeight.Bold) },
+                text = { Text("File status '${item.name}' akan dihapus permanen dari penyimpanan HP Anda.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val deleted = StatusSaverHelper.deleteStatus(context, item)
+                            if (deleted) {
+                                Toast.makeText(context, "Status berhasil dihapus!", Toast.LENGTH_SHORT).show()
+                                refreshStatuses()
+                                if (selectedStatusForPreview == item) selectedStatusForPreview = null
+                            } else {
+                                Toast.makeText(context, "Gagal menghapus file", Toast.LENGTH_SHORT).show()
+                            }
+                            statusToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) {
+                        Text("Hapus", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { statusToDelete = null }) {
+                        Text("Batal")
                     }
                 }
             )
@@ -252,8 +354,10 @@ fun StatusSaverScreen() {
 @Composable
 fun StatusGridCard(
     statusItem: StatusMediaItem,
+    isDownloaded: Boolean = false,
     onClick: () -> Unit,
-    onSaveClick: () -> Unit
+    onSaveClick: () -> Unit = {},
+    onDeleteClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val bitmap = remember(statusItem.uri) {
@@ -310,20 +414,38 @@ fun StatusGridCard(
                 }
             }
 
-            IconButton(
-                onClick = onSaveClick,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(6.dp)
-                    .size(36.dp)
-                    .background(Color(0xFF2563EB), CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Download,
-                    contentDescription = "Simpan",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
+            if (!isDownloaded) {
+                IconButton(
+                    onClick = onSaveClick,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .size(36.dp)
+                        .background(Color(0xFF2563EB), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "Simpan",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            } else {
+                IconButton(
+                    onClick = onDeleteClick,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .size(36.dp)
+                        .background(Color(0xFFDC2626), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Hapus",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
@@ -332,8 +454,10 @@ fun StatusGridCard(
 @Composable
 fun StatusPreviewDialog(
     statusItem: StatusMediaItem,
+    isDownloaded: Boolean = false,
     onDismiss: () -> Unit,
-    onSave: () -> Unit
+    onSave: () -> Unit = {},
+    onDelete: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val bitmap = remember(statusItem.uri) {
@@ -362,16 +486,34 @@ fun StatusPreviewDialog(
                 .wrapContentHeight()
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = if (statusItem.isVideo) "Video Status WhatsApp" else "Foto Status WhatsApp",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
-                Text(
-                    text = "Tersimpan lokal & ditonton tanpa terdeteksi",
-                    fontSize = 11.sp,
-                    color = Color(0xFF0369A1)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (statusItem.isVideo) "Video Status" else "Foto Status",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = if (isDownloaded) "Tersimpan di Galeri ChatRestore" else "Status WhatsApp Aktif",
+                            fontSize = 11.sp,
+                            color = Color(0xFF0369A1)
+                        )
+                    }
+
+                    if (isDownloaded) {
+                        IconButton(onClick = onDelete) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Hapus Status",
+                                tint = Color(0xFFDC2626)
+                            )
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
@@ -412,16 +554,18 @@ fun StatusPreviewDialog(
                     ) {
                         Text("Tutup")
                     }
-                    Button(
-                        onClick = {
-                            onSave()
-                            onDismiss()
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Simpan")
+                    if (!isDownloaded) {
+                        Button(
+                            onClick = {
+                                onSave()
+                                onDismiss()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Simpan")
+                        }
                     }
                 }
             }

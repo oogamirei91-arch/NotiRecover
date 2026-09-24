@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -37,9 +38,11 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MediaGalleryScreen(
-    mediaMessages: List<MessageEntity>
+    mediaMessages: List<MessageEntity>,
+    onDeleteMedia: (MessageEntity) -> Unit = {}
 ) {
     var selectedMediaForPreview by remember { mutableStateOf<MessageEntity?>(null) }
+    var mediaToDelete by remember { mutableStateOf<MessageEntity?>(null) }
 
     Scaffold(
         topBar = {
@@ -72,7 +75,7 @@ fun MediaGalleryScreen(
                     Icon(
                         imageVector = Icons.Default.Image,
                         contentDescription = null,
-                        tint = androidx.compose.ui.graphics.Color(0xFFCBD5E1),
+                        tint = Color(0xFFCBD5E1),
                         modifier = Modifier.size(64.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -102,7 +105,8 @@ fun MediaGalleryScreen(
                 items(mediaMessages, key = { it.id }) { item ->
                     MediaGridItem(
                         message = item,
-                        onClick = { selectedMediaForPreview = item }
+                        onClick = { selectedMediaForPreview = item },
+                        onDeleteClick = { mediaToDelete = item }
                     )
                 }
             }
@@ -112,7 +116,36 @@ fun MediaGalleryScreen(
         selectedMediaForPreview?.let { media ->
             ImagePreviewDialog(
                 media = media,
-                onDismiss = { selectedMediaForPreview = null }
+                onDismiss = { selectedMediaForPreview = null },
+                onDelete = {
+                    onDeleteMedia(media)
+                    selectedMediaForPreview = null
+                }
+            )
+        }
+
+        // Dialog Konfirmasi Hapus Media
+        mediaToDelete?.let { media ->
+            AlertDialog(
+                onDismissRequest = { mediaToDelete = null },
+                title = { Text("Hapus Gambar Ini?", fontWeight = FontWeight.Bold) },
+                text = { Text("File gambar ini akan dihapus permanen dari memori internal aplikasi.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            onDeleteMedia(media)
+                            mediaToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) {
+                        Text("Hapus", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { mediaToDelete = null }) {
+                        Text("Batal")
+                    }
+                }
             )
         }
     }
@@ -121,7 +154,8 @@ fun MediaGalleryScreen(
 @Composable
 fun MediaGridItem(
     message: MessageEntity,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDeleteClick: () -> Unit = {}
 ) {
     val bitmap = remember(message.mediaUri) {
         message.mediaUri?.let { path ->
@@ -147,7 +181,7 @@ fun MediaGridItem(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(140.dp)
-                    .background(androidx.compose.ui.graphics.Color(0xFFF1F5F9)),
+                    .background(Color(0xFFF1F5F9)),
                 contentAlignment = Alignment.Center
             ) {
                 if (bitmap != null) {
@@ -161,7 +195,7 @@ fun MediaGridItem(
                     Icon(
                         imageVector = Icons.Default.Image,
                         contentDescription = null,
-                        tint = androidx.compose.ui.graphics.Color.Gray
+                        tint = Color.Gray
                     )
                 }
 
@@ -176,7 +210,7 @@ fun MediaGridItem(
                     ) {
                         Text(
                             text = "TERHAPUS",
-                            color = androidx.compose.ui.graphics.Color.White,
+                            color = Color.White,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -185,19 +219,39 @@ fun MediaGridItem(
                 }
             }
 
-            Column(modifier = Modifier.padding(8.dp)) {
-                Text(
-                    text = message.senderName,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = formattedTime,
-                    fontSize = 10.sp,
-                    color = TextSecondaryLight
-                )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = message.senderName,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = formattedTime,
+                        fontSize = 10.sp,
+                        color = TextSecondaryLight
+                    )
+                }
+
+                IconButton(
+                    onClick = onDeleteClick,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Hapus Gambar",
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }
@@ -206,8 +260,11 @@ fun MediaGridItem(
 @Composable
 fun ImagePreviewDialog(
     media: MessageEntity,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onDelete: () -> Unit = {}
 ) {
+    var showConfirmDelete by remember { mutableStateOf(false) }
+
     val bitmap = remember(media.mediaUri) {
         media.mediaUri?.let { path ->
             val file = File(path)
@@ -229,7 +286,7 @@ fun ImagePreviewDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = media.senderName,
                             fontWeight = FontWeight.Bold,
@@ -243,6 +300,14 @@ fun ImagePreviewDialog(
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
+                    }
+
+                    IconButton(onClick = { showConfirmDelete = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Hapus Gambar",
+                            tint = Color(0xFFDC2626)
+                        )
                     }
                 }
 
@@ -260,7 +325,7 @@ fun ImagePreviewDialog(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
                     onClick = onDismiss,
@@ -270,5 +335,29 @@ fun ImagePreviewDialog(
                 }
             }
         }
+    }
+
+    if (showConfirmDelete) {
+        AlertDialog(
+            onDismissRequest = { showConfirmDelete = false },
+            title = { Text("Hapus Gambar?", fontWeight = FontWeight.Bold) },
+            text = { Text("File gambar ini akan dihapus permanen dari perangkat.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showConfirmDelete = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Text("Hapus", color = Color.White)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showConfirmDelete = false }) {
+                    Text("Batal")
+                }
+            }
+        )
     }
 }

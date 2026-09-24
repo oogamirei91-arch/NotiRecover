@@ -95,6 +95,8 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    val scope = rememberCoroutineScope()
+
                     if (isShowingSettings) {
                         SettingsScreen(
                             currentTheme = themeMode,
@@ -117,7 +119,21 @@ class MainActivity : ComponentActivity() {
                         ChatDetailScreen(
                             conversation = currentConv,
                             messages = messages,
-                            onBackClick = { selectedConversation = null }
+                            onBackClick = { selectedConversation = null },
+                            onDeleteConversation = {
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    database.chatDao().deleteConversation(currentConv.id)
+                                }
+                                selectedConversation = null
+                            },
+                            onDeleteMessage = { msg ->
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    msg.mediaUri?.let { path ->
+                                        try { java.io.File(path).delete() } catch (ignored: Exception) {}
+                                    }
+                                    database.chatDao().deleteMessage(msg.id)
+                                }
+                            }
                         )
                     } else {
                         Scaffold(
@@ -163,18 +179,31 @@ class MainActivity : ComponentActivity() {
                                         isServiceEnabled = isServiceEnabled,
                                         currentLanguage = currentLanguage,
                                         onEnableServiceClick = {
-                                            PermissionHelper.openNotificationAccessSettings(this)
-                                            PermissionHelper.requestIgnoreBatteryOptimization(this)
+                                            PermissionHelper.openNotificationAccessSettings(this@MainActivity)
+                                            PermissionHelper.requestIgnoreBatteryOptimization(this@MainActivity)
                                         },
                                         onConversationClick = { conv ->
                                             selectedConversation = conv
+                                        },
+                                        onDeleteConversation = { conv ->
+                                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                database.chatDao().deleteConversation(conv.id)
+                                            }
                                         },
                                         onSettingsClick = {
                                             isShowingSettings = true
                                         }
                                     )
                                     1 -> MediaGalleryScreen(
-                                        mediaMessages = mediaMessages
+                                        mediaMessages = mediaMessages,
+                                        onDeleteMedia = { media ->
+                                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                media.mediaUri?.let { path ->
+                                                    try { java.io.File(path).delete() } catch (ignored: Exception) {}
+                                                }
+                                                database.chatDao().deleteMessage(media.id)
+                                            }
+                                        }
                                     )
                                     2 -> StatusSaverScreen()
                                     3 -> WebScreen()

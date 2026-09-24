@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
@@ -43,9 +44,11 @@ fun HomeScreen(
     currentLanguage: String = "ID",
     onEnableServiceClick: () -> Unit,
     onConversationClick: (ConversationEntity) -> Unit,
+    onDeleteConversation: (ConversationEntity) -> Unit = {},
     onSettingsClick: () -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") }
+    var conversationToDelete by remember { mutableStateOf<ConversationEntity?>(null) }
 
     // Hitung statistik per-akun / per-sosmed
     val waList = remember(conversations) { conversations.filter { it.packageName.contains("whatsapp") } }
@@ -199,11 +202,37 @@ fun HomeScreen(
                     items(filteredList, key = { it.id }) { conversation ->
                         ConversationCard(
                             conversation = conversation,
-                            onClick = { onConversationClick(conversation) }
+                            onClick = { onConversationClick(conversation) },
+                            onDeleteClick = { conversationToDelete = conversation }
                         )
                     }
                 }
             }
+        }
+
+        // Dialog Konfirmasi Hapus Chat
+        conversationToDelete?.let { conv ->
+            AlertDialog(
+                onDismissRequest = { conversationToDelete = null },
+                title = { Text("Hapus Riwayat Chat?", fontWeight = FontWeight.Bold) },
+                text = { Text("Semua pesan yang tersimpan dari '${conv.chatTitle}' akan dihapus dari aplikasi.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            onDeleteConversation(conv)
+                            conversationToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) {
+                        Text("Hapus", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { conversationToDelete = null }) {
+                        Text("Batal")
+                    }
+                }
+            )
         }
     }
 }
@@ -507,7 +536,8 @@ fun StepRow(number: String, title: String, desc: String) {
 @Composable
 fun ConversationCard(
     conversation: ConversationEntity,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDeleteClick: () -> Unit = {}
 ) {
     val appBadgeColor = when {
         conversation.packageName.contains("whatsapp") -> Color(0xFF25D366)
@@ -537,12 +567,12 @@ fun ConversationCard(
         shadowElevation = 1.dp
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(46.dp)
                     .clip(CircleShape)
                     .background(Color(0xFFE2E8F0)),
                 contentAlignment = Alignment.Center
@@ -631,6 +661,18 @@ fun ConversationCard(
                         }
                     }
                 }
+            }
+
+            IconButton(
+                onClick = onDeleteClick,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Hapus Percakapan",
+                    tint = Color(0xFF94A3B8),
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

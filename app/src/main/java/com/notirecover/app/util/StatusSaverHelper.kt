@@ -215,4 +215,147 @@ object StatusSaverHelper {
             false
         }
     }
+
+    /**
+     * Mengambil daftar status yang telah diunduh/disimpan pengguna ke Galeri ChatRestore.
+     */
+    fun getDownloadedStatuses(context: Context): List<StatusMediaItem> {
+        val result = mutableListOf<StatusMediaItem>()
+
+        // 1. Scan direct folder Pictures/ChatRestore & Movies/ChatRestore
+        try {
+            val picDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "ChatRestore")
+            val movieDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "ChatRestore")
+
+            val scanDirs = listOf(picDir, movieDir)
+            for (dir in scanDirs) {
+                if (dir.exists() && dir.isDirectory) {
+                    dir.listFiles()?.forEach { file ->
+                        val name = file.name.lowercase()
+                        if (name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".png") || name.endsWith(".mp4")) {
+                            val isVideo = name.endsWith(".mp4")
+                            result.add(
+                                StatusMediaItem(
+                                    uri = Uri.fromFile(file),
+                                    name = file.name,
+                                    isVideo = isVideo,
+                                    lastModified = file.lastModified(),
+                                    file = file
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scan downloaded statuses dir", e)
+        }
+
+        // 2. Query MediaStore for ChatRestore files
+        try {
+            val projection = arrayOf(
+                MediaStore.MediaColumns._ID,
+                MediaStore.MediaColumns.DISPLAY_NAME,
+                MediaStore.MediaColumns.DATE_MODIFIED
+            )
+
+            // Images
+            val imageCursor = context.contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
+                arrayOf("%ChatRestore%"),
+                "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
+            )
+            imageCursor?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idCol)
+                    val name = cursor.getString(nameCol)
+                    val date = cursor.getLong(dateCol) * 1000
+                    val contentUri = Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString())
+                    if (result.none { it.name == name }) {
+                        result.add(
+                            StatusMediaItem(
+                                uri = contentUri,
+                                name = name,
+                                isVideo = false,
+                                lastModified = date
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Videos
+            val videoCursor = context.contentResolver.query(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                projection,
+                "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?",
+                arrayOf("%ChatRestore%"),
+                "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
+            )
+            videoCursor?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idCol)
+                    val name = cursor.getString(nameCol)
+                    val date = cursor.getLong(dateCol) * 1000
+                    val contentUri = Uri.withAppendedPath(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id.toString())
+                    if (result.none { it.name == name }) {
+                        result.add(
+                            StatusMediaItem(
+                                uri = contentUri,
+                                name = name,
+                                isVideo = true,
+                                lastModified = date
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying MediaStore for ChatRestore media", e)
+        }
+
+        return result.sortedByDescending { it.lastModified }
+    }
+
+    /**
+     * Menghapus file status yang tersimpan di memori lokal.
+     */
+    fun deleteStatus(context: Context, statusItem: StatusMediaItem): Boolean {
+        var deleted = false
+        try {
+            // 1. Delete direct file
+            if (statusItem.file != null && statusItem.file.exists()) {
+                deleted = statusItem.file.delete()
+            }
+
+            // 2. Delete via SAF DocumentFile
+            if (!deleted && statusItem.uri.scheme == "content") {
+                try {
+                    val doc = DocumentFile.fromSingleUri(context, statusItem.uri)
+                    if (doc != null && doc.exists()) {
+                        deleted = doc.delete()
+                    }
+                } catch (ignored: Exception) {}
+            }
+
+            // 3. Delete via ContentResolver
+            if (!deleted && statusItem.uri.scheme == "content") {
+                try {
+                    val rows = context.contentResolver.delete(statusItem.uri, null, null)
+                    deleted = rows > 0
+                } catch (ignored: Exception) {}
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting status file", e)
+        }
+        return deleted
+    }
 }

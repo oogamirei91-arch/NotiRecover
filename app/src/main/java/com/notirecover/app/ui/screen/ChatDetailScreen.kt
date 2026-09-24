@@ -2,16 +2,17 @@ package com.notirecover.app.ui.screen
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,8 +34,13 @@ import java.util.*
 fun ChatDetailScreen(
     conversation: ConversationEntity,
     messages: List<MessageEntity>,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onDeleteConversation: () -> Unit = {},
+    onDeleteMessage: (MessageEntity) -> Unit = {}
 ) {
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
+    var messageToDelete by remember { mutableStateOf<MessageEntity?>(null) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -64,6 +70,15 @@ fun ChatDetailScreen(
                             contentDescription = "Kembali"
                         )
                     }
+                },
+                actions = {
+                    IconButton(onClick = { showDeleteAllDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Hapus Riwayat Chat",
+                            tint = Color(0xFFDC2626)
+                        )
+                    }
                 }
             )
         }
@@ -90,15 +105,71 @@ fun ChatDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(messages, key = { it.id }) { message ->
-                    MessageBubble(message = message)
+                    MessageBubble(
+                        message = message,
+                        onDeleteClick = { messageToDelete = message }
+                    )
                 }
             }
+        }
+
+        // Dialog Hapus Semua Pesan
+        if (showDeleteAllDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteAllDialog = false },
+                title = { Text("Hapus Semua Riwayat?", fontWeight = FontWeight.Bold) },
+                text = { Text("Semua pesan dan foto yang tersimpan dari percakapan ini akan dihapus permanen.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteAllDialog = false
+                            onDeleteConversation()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) {
+                        Text("Hapus Semua", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showDeleteAllDialog = false }) {
+                        Text("Batal")
+                    }
+                }
+            )
+        }
+
+        // Dialog Hapus Pesan Tunggal
+        messageToDelete?.let { msg ->
+            AlertDialog(
+                onDismissRequest = { messageToDelete = null },
+                title = { Text("Hapus Pesan Ini?", fontWeight = FontWeight.Bold) },
+                text = { Text("Pesan ini akan dihapus dari riwayat ChatRestore.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            onDeleteMessage(msg)
+                            messageToDelete = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) {
+                        Text("Hapus", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { messageToDelete = null }) {
+                        Text("Batal")
+                    }
+                }
+            )
         }
     }
 }
 
 @Composable
-fun MessageBubble(message: MessageEntity) {
+fun MessageBubble(
+    message: MessageEntity,
+    onDeleteClick: () -> Unit = {}
+) {
     val timeReceived = remember(message.receivedAt) {
         SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.receivedAt))
     }
@@ -147,16 +218,20 @@ fun MessageBubble(message: MessageEntity) {
                             color = Color(0xFFDC2626)
                         )
                     }
-                    if (timeDeleted != null) {
-                        Text(
-                            text = "Dihapus: $timeDeleted",
-                            fontSize = 10.sp,
-                            color = Color(0xFF991B1B)
+                    IconButton(
+                        onClick = onDeleteClick,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Hapus Pesan",
+                            tint = Color(0xFF991B1B),
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 // Jika ada gambar terselamatkan, tampilkan fotonya
                 if (bitmap != null) {
@@ -182,12 +257,26 @@ fun MessageBubble(message: MessageEntity) {
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                Text(
-                    text = "Diterima pada $timeReceived",
-                    fontSize = 10.sp,
-                    color = Color(0xFF64748B),
-                    modifier = Modifier.align(Alignment.End)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (timeDeleted != null) {
+                        Text(
+                            text = "Ditarik: $timeDeleted",
+                            fontSize = 10.sp,
+                            color = Color(0xFF991B1B)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.width(1.dp))
+                    }
+                    Text(
+                        text = "Diterima: $timeReceived",
+                        fontSize = 10.sp,
+                        color = Color(0xFF64748B)
+                    )
+                }
             }
         }
     } else {
@@ -220,12 +309,28 @@ fun MessageBubble(message: MessageEntity) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = timeReceived,
-                    fontSize = 10.sp,
-                    color = TextSecondaryLight,
-                    modifier = Modifier.align(Alignment.End)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = onDeleteClick,
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Hapus",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    Text(
+                        text = timeReceived,
+                        fontSize = 10.sp,
+                        color = TextSecondaryLight
+                    )
+                }
             }
         }
     }
