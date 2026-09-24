@@ -3,11 +3,13 @@ package com.notirecover.app.ui.screen
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -29,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.notirecover.app.ui.theme.PrimaryBlue
 import com.notirecover.app.ui.theme.TextSecondaryLight
 import com.notirecover.app.util.PermissionHelper
 import com.notirecover.app.util.StatusMediaItem
@@ -43,18 +46,39 @@ fun StatusSaverScreen() {
     var statusList by remember { mutableStateOf<List<StatusMediaItem>>(emptyList()) }
     var downloadedList by remember { mutableStateOf<List<StatusMediaItem>>(emptyList()) }
     var selectedStatusForPreview by remember { mutableStateOf<StatusMediaItem?>(null) }
-    var statusToDelete by remember { mutableStateOf<StatusMediaItem?>(null) }
     
+    // Status Deletion & Selection States
+    var isSelectionMode by remember { mutableStateOf(false) }
+    var selectedItems by remember { mutableStateOf<Set<StatusMediaItem>>(emptySet()) }
+    var statusToDelete by remember { mutableStateOf<StatusMediaItem?>(null) }
+    var showBulkDeleteDialog by remember { mutableStateOf(false) }
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
+
     var hasAllFilesPermission by remember { mutableStateOf<Boolean>(PermissionHelper.hasAllFilesAccess()) }
     var hasFolderConnected by remember {
         mutableStateOf<Boolean>(PermissionHelper.hasAllFilesAccess() || StatusSaverHelper.getSavedTreeUri(context) != null)
     }
+
+    val currentList = if (selectedTab == 0) statusList else downloadedList
 
     fun refreshStatuses() {
         hasAllFilesPermission = PermissionHelper.hasAllFilesAccess()
         statusList = StatusSaverHelper.getAllStatuses(context)
         downloadedList = StatusSaverHelper.getDownloadedStatuses(context)
         hasFolderConnected = hasAllFilesPermission || StatusSaverHelper.getSavedTreeUri(context) != null || statusList.isNotEmpty()
+        // Bersihkan item terpilih yang sudah tidak ada
+        selectedItems = selectedItems.filter { item ->
+            (if (selectedTab == 0) statusList else downloadedList).any { it.name == item.name }
+        }.toSet()
+        if (selectedItems.isEmpty() && isSelectionMode) {
+            isSelectionMode = false
+        }
+    }
+
+    // Tangani Tombol Back saat mode seleksi aktif
+    BackHandler(enabled = isSelectionMode) {
+        isSelectionMode = false
+        selectedItems = emptySet()
     }
 
     // Launcher Pemilih Folder SAF Resmi Android
@@ -69,7 +93,6 @@ fun StatusSaverScreen() {
         }
     }
 
-    // Auto-refresh saat pengguna kembali ke aplikasi
     DisposableEffect(Unit) {
         refreshStatuses()
         onDispose { }
@@ -79,29 +102,141 @@ fun StatusSaverScreen() {
         refreshStatuses()
     }
 
+    var showPaywallDialog by remember { mutableStateOf(false) }
+    val prefs = remember { com.notirecover.app.data.preference.AppPreferences(context) }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
+            if (isSelectionMode) {
+                // TopAppBar Khusus Mode Seleksi (Bulk Action)
+                TopAppBar(
+                    title = {
                         Text(
-                            text = "Status Saver",
+                            text = "${selectedItems.size} Terpilih",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
-                        Text(
-                            text = if (selectedTab == 0) "${statusList.size} Status Terdeteksi (Incognito)" else "${downloadedList.size} Status Tersimpan",
-                            fontSize = 12.sp,
-                            color = TextSecondaryLight
-                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            isSelectionMode = false
+                            selectedItems = emptySet()
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Batal Seleksi")
+                        }
+                    },
+                    actions = {
+                        // Tombol Pilih Semua / Batal Pilih Semua
+                        IconButton(onClick = {
+                            selectedItems = if (selectedItems.size == currentList.size) {
+                                emptySet()
+                            } else {
+                                currentList.toSet()
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (selectedItems.size == currentList.size && currentList.isNotEmpty())
+                                    Icons.Default.Deselect
+                                else
+                                    Icons.Default.SelectAll,
+                                contentDescription = "Pilih Semua"
+                            )
+                        }
+
+                        // Tombol Hapus Massal (Bulk Delete)
+                        IconButton(
+                            onClick = { showBulkDeleteDialog = true },
+                            enabled = selectedItems.isNotEmpty()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Hapus Terpilih",
+                                tint = if (selectedItems.isNotEmpty()) Color(0xFFDC2626) else Color.Gray
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(0xFFEFF6FF)
+                    )
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "Status Saver",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp
+                                )
+                                if (prefs.isProUser) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color(0xFFFEF3C7)
+                                    ) {
+                                        Text(
+                                            text = "👑 PRO",
+                                            color = Color(0xFFB45309),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = if (selectedTab == 0) "${statusList.size} Status Terdeteksi (Incognito)" else "${downloadedList.size} Status Tersimpan",
+                                fontSize = 12.sp,
+                                color = TextSecondaryLight
+                            )
+                        }
+                    },
+                    actions = {
+                        // 1-Click Save All Status (PRO Feature)
+                        if (selectedTab == 0 && statusList.isNotEmpty()) {
+                            IconButton(onClick = {
+                                if (prefs.isProUser) {
+                                    var count = 0
+                                    statusList.forEach { item ->
+                                        if (StatusSaverHelper.saveStatusToGallery(context, item)) {
+                                            count++
+                                        }
+                                    }
+                                    Toast.makeText(context, "$count status berhasil disimpan massal ke Galeri! 🎉", Toast.LENGTH_SHORT).show()
+                                    refreshStatuses()
+                                } else {
+                                    showPaywallDialog = true
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.DownloadForOffline,
+                                    contentDescription = "Simpan Semua Status",
+                                    tint = Color(0xFFD97706)
+                                )
+                            }
+                        }
+
+                        if (currentList.isNotEmpty()) {
+                            // Tombol Masuk Mode Pilih Banyak
+                            IconButton(onClick = { isSelectionMode = true }) {
+                                Icon(Icons.Default.Checklist, contentDescription = "Pilih Banyak")
+                            }
+
+                            // Tombol Hapus Semua di Tab Ini
+                            if (selectedTab == 1) {
+                                IconButton(onClick = { showDeleteAllDialog = true }) {
+                                    Icon(Icons.Default.DeleteSweep, contentDescription = "Hapus Semua", tint = Color(0xFFDC2626))
+                                }
+                            }
+                        }
+
+                        IconButton(onClick = { refreshStatuses() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Segarkan Status")
+                        }
                     }
-                },
-                actions = {
-                    IconButton(onClick = { refreshStatuses() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Segarkan Status")
-                    }
-                }
-            )
+                )
+            }
         }
     ) { paddingValues ->
         Column(
@@ -118,6 +253,8 @@ fun StatusSaverScreen() {
                     selected = selectedTab == 0,
                     onClick = {
                         selectedTab = 0
+                        isSelectionMode = false
+                        selectedItems = emptySet()
                         refreshStatuses()
                     },
                     text = { Text("Status WhatsApp", fontWeight = FontWeight.SemiBold) }
@@ -126,6 +263,8 @@ fun StatusSaverScreen() {
                     selected = selectedTab == 1,
                     onClick = {
                         selectedTab = 1
+                        isSelectionMode = false
+                        selectedItems = emptySet()
                         downloadedList = StatusSaverHelper.getDownloadedStatuses(context)
                     },
                     text = { Text("Tersimpan (${downloadedList.size})", fontWeight = FontWeight.SemiBold) }
@@ -265,10 +404,25 @@ fun StatusSaverScreen() {
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             items(statusList, key = { it.uri.toString() }) { item ->
+                                val isSelected = selectedItems.contains(item)
                                 StatusGridCard(
                                     statusItem = item,
                                     isDownloaded = false,
-                                    onClick = { selectedStatusForPreview = item },
+                                    isSelectionMode = isSelectionMode,
+                                    isSelected = isSelected,
+                                    onClick = {
+                                        if (isSelectionMode) {
+                                            selectedItems = if (isSelected) selectedItems - item else selectedItems + item
+                                        } else {
+                                            selectedStatusForPreview = item
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (!isSelectionMode) {
+                                            isSelectionMode = true
+                                            selectedItems = setOf(item)
+                                        }
+                                    },
                                     onSaveClick = {
                                         val success = StatusSaverHelper.saveStatusToGallery(context, item)
                                         if (success) {
@@ -277,7 +431,8 @@ fun StatusSaverScreen() {
                                         } else {
                                             Toast.makeText(context, "Gagal menyimpan file", Toast.LENGTH_SHORT).show()
                                         }
-                                    }
+                                    },
+                                    onDeleteClick = { statusToDelete = item }
                                 )
                             }
                         }
@@ -329,10 +484,25 @@ fun StatusSaverScreen() {
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             items(downloadedList, key = { it.uri.toString() }) { item ->
+                                val isSelected = selectedItems.contains(item)
                                 StatusGridCard(
                                     statusItem = item,
                                     isDownloaded = true,
-                                    onClick = { selectedStatusForPreview = item },
+                                    isSelectionMode = isSelectionMode,
+                                    isSelected = isSelected,
+                                    onClick = {
+                                        if (isSelectionMode) {
+                                            selectedItems = if (isSelected) selectedItems - item else selectedItems + item
+                                        } else {
+                                            selectedStatusForPreview = item
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (!isSelectionMode) {
+                                            isSelectionMode = true
+                                            selectedItems = setOf(item)
+                                        }
+                                    },
                                     onDeleteClick = { statusToDelete = item }
                                 )
                             }
@@ -364,12 +534,12 @@ fun StatusSaverScreen() {
             )
         }
 
-        // Dialog Konfirmasi Hapus Status Downloaded
+        // Dialog Konfirmasi Hapus Satuan (Single Delete)
         statusToDelete?.let { item ->
             AlertDialog(
                 onDismissRequest = { statusToDelete = null },
                 title = { Text("Hapus Status Ini?", fontWeight = FontWeight.Bold) },
-                text = { Text("File status '${item.name}' akan dihapus permanen dari penyimpanan HP Anda.") },
+                text = { Text("File '${item.name}' akan dihapus permanen dari penyimpanan HP Anda.") },
                 confirmButton = {
                     Button(
                         onClick = {
@@ -395,14 +565,92 @@ fun StatusSaverScreen() {
                 }
             )
         }
+
+        // Dialog Konfirmasi Hapus Terpilih (Bulk Delete)
+        if (showBulkDeleteDialog && selectedItems.isNotEmpty()) {
+            AlertDialog(
+                onDismissRequest = { showBulkDeleteDialog = false },
+                title = { Text("Hapus ${selectedItems.size} Status?", fontWeight = FontWeight.Bold) },
+                text = { Text("${selectedItems.size} file yang dipilih akan dihapus permanen dari memori HP.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            var successCount = 0
+                            selectedItems.forEach { item ->
+                                if (StatusSaverHelper.deleteStatus(context, item)) {
+                                    successCount++
+                                }
+                            }
+                            Toast.makeText(context, "$successCount file status berhasil dihapus! 🗑️", Toast.LENGTH_SHORT).show()
+                            showBulkDeleteDialog = false
+                            isSelectionMode = false
+                            selectedItems = emptySet()
+                            refreshStatuses()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) {
+                        Text("Hapus Semua (${selectedItems.size})", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showBulkDeleteDialog = false }) {
+                        Text("Batal")
+                    }
+                }
+            )
+        }
+
+        // Dialog Konfirmasi Hapus Semua Status Tersimpan
+        if (showDeleteAllDialog && downloadedList.isNotEmpty()) {
+            AlertDialog(
+                onDismissRequest = { showDeleteAllDialog = false },
+                title = { Text("Hapus Semua Koleksi Tersimpan?", fontWeight = FontWeight.Bold) },
+                text = { Text("Seluruh (${downloadedList.size}) foto & video status yang tersimpan di folder ChatRestore akan dihapus.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            var count = 0
+                            downloadedList.forEach { item ->
+                                if (StatusSaverHelper.deleteStatus(context, item)) {
+                                    count++
+                                }
+                            }
+                            Toast.makeText(context, "$count status berhasil dihapus total!", Toast.LENGTH_SHORT).show()
+                            showDeleteAllDialog = false
+                            refreshStatuses()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) {
+                        Text("Hapus Total", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showDeleteAllDialog = false }) {
+                        Text("Batal")
+                    }
+                }
+            )
+        }
+
+        // Dialog Paywall PRO
+        if (showPaywallDialog) {
+            com.notirecover.app.ui.dialog.ProPaywallDialog(
+                onDismiss = { showPaywallDialog = false },
+                onSuccessPurchase = { refreshStatuses() }
+            )
+        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun StatusGridCard(
     statusItem: StatusMediaItem,
     isDownloaded: Boolean = false,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onSaveClick: () -> Unit = {},
     onDeleteClick: () -> Unit = {}
 ) {
@@ -426,11 +674,15 @@ fun StatusGridCard(
 
     Surface(
         shape = RoundedCornerShape(12.dp),
-        shadowElevation = 2.dp,
+        shadowElevation = if (isSelected) 4.dp else 2.dp,
         color = MaterialTheme.colorScheme.surface,
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.5.dp, PrimaryBlue) else null,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
     ) {
         Box(
             modifier = Modifier
@@ -461,37 +713,80 @@ fun StatusGridCard(
                 }
             }
 
-            if (!isDownloaded) {
-                IconButton(
-                    onClick = onSaveClick,
+            // Mode Seleksi: Tampilkan Checklist
+            if (isSelectionMode) {
+                Surface(
+                    shape = CircleShape,
+                    color = if (isSelected) PrimaryBlue else Color.Black.copy(alpha = 0.4f),
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                        .size(36.dp)
-                        .background(Color(0xFF2563EB), CircleShape)
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .size(26.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = "Simpan",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Terpilih",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
             } else {
-                IconButton(
-                    onClick = onDeleteClick,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(6.dp)
-                        .size(36.dp)
-                        .background(Color(0xFFDC2626), CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Hapus",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
+                // Mode Normal: Tombol Download atau Hapus
+                if (!isDownloaded) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        IconButton(
+                            onClick = onDeleteClick,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Hapus dari Cache",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onSaveClick,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(PrimaryBlue, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Simpan",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                } else {
+                    IconButton(
+                        onClick = onDeleteClick,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(6.dp)
+                            .size(36.dp)
+                            .background(Color(0xFFDC2626), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Hapus",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }
@@ -551,14 +846,12 @@ fun StatusPreviewDialog(
                         )
                     }
 
-                    if (isDownloaded) {
-                        IconButton(onClick = onDelete) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "Hapus Status",
-                                tint = Color(0xFFDC2626)
-                            )
-                        }
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Hapus Status",
+                            tint = Color(0xFFDC2626)
+                        )
                     }
                 }
 

@@ -1,8 +1,10 @@
 package com.notirecover.app.ui.screen
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -10,13 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,16 +41,21 @@ fun HomeScreen(
     onEnableServiceClick: () -> Unit,
     onConversationClick: (ConversationEntity) -> Unit,
     onDeleteConversation: (ConversationEntity) -> Unit = {},
+    onDeleteMultipleConversations: (Set<ConversationEntity>) -> Unit = {},
     onSettingsClick: () -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") }
     var conversationToDelete by remember { mutableStateOf<ConversationEntity?>(null) }
+    
+    // Multi-select state
+    var isSelectionMode by remember { mutableStateOf(false) }
+    var selectedConversations by remember { mutableStateOf<Set<ConversationEntity>>(emptySet()) }
+    var showBulkDeleteDialog by remember { mutableStateOf(false) }
 
     // Hitung statistik per-akun / per-sosmed
     val waList = remember(conversations) { conversations.filter { it.packageName.contains("whatsapp") } }
     val igList = remember(conversations) { conversations.filter { it.packageName.contains("instagram") } }
     val tgList = remember(conversations) { conversations.filter { it.packageName.contains("telegram") } }
-    val fbList = remember(conversations) { conversations.filter { it.packageName.contains("facebook") || it.packageName.contains("orca") } }
 
     val filteredList = remember(conversations, selectedFilter) {
         if (selectedFilter == "ALL") {
@@ -64,63 +65,138 @@ fun HomeScreen(
         }
     }
 
+    // Clean up selected items that no longer exist
+    LaunchedEffect(conversations) {
+        selectedConversations = selectedConversations.filter { sel -> conversations.any { it.id == sel.id } }.toSet()
+        if (selectedConversations.isEmpty() && isSelectionMode) {
+            isSelectionMode = false
+        }
+    }
+
+    BackHandler(enabled = isSelectionMode) {
+        isSelectionMode = false
+        selectedConversations = emptySet()
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color.Transparent,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Image(
-                                painter = painterResource(id = R.drawable.app_logo),
-                                contentDescription = "Logo",
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(10.dp))
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "ChatRestore",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 19.sp
-                            )
-                            Text(
-                                text = LanguageHelper.get("app_subtitle", currentLanguage),
-                                fontSize = 11.sp,
-                                color = TextSecondaryLight
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    Surface(
-                        color = Color(0xFFFEF3C7),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.padding(end = 4.dp)
-                    ) {
+            if (isSelectionMode) {
+                TopAppBar(
+                    title = {
                         Text(
-                            text = "👑 PRO",
-                            color = Color(0xFFB45309),
+                            text = "${selectedConversations.size} Chat Terpilih",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            fontSize = 18.sp
                         )
-                    }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            isSelectionMode = false
+                            selectedConversations = emptySet()
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Batal Seleksi")
+                        }
+                    },
+                    actions = {
+                        // Tombol Pilih Semua / Batal Pilih Semua
+                        IconButton(onClick = {
+                            selectedConversations = if (selectedConversations.size == filteredList.size) {
+                                emptySet()
+                            } else {
+                                filteredList.toSet()
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (selectedConversations.size == filteredList.size && filteredList.isNotEmpty())
+                                    Icons.Default.Deselect
+                                else
+                                    Icons.Default.SelectAll,
+                                contentDescription = "Pilih Semua"
+                            )
+                        }
 
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Pengaturan",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
+                        // Tombol Hapus Massal
+                        IconButton(
+                            onClick = { showBulkDeleteDialog = true },
+                            enabled = selectedConversations.isNotEmpty()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Hapus Terpilih",
+                                tint = if (selectedConversations.isNotEmpty()) Color(0xFFDC2626) else Color.Gray
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(0xFFEFF6FF)
+                    )
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color.Transparent,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Image(
+                                    painter = painterResource(id = R.drawable.app_logo),
+                                    contentDescription = "Logo",
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(10.dp))
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "ChatRestore",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 19.sp
+                                )
+                                Text(
+                                    text = LanguageHelper.get("app_subtitle", currentLanguage),
+                                    fontSize = 11.sp,
+                                    color = TextSecondaryLight
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        if (filteredList.isNotEmpty()) {
+                            IconButton(onClick = { isSelectionMode = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Checklist,
+                                    contentDescription = "Pilih Banyak Chat"
+                                )
+                            }
+                        }
+
+                        Surface(
+                            color = Color(0xFFFEF3C7),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            Text(
+                                text = "👑 PRO",
+                                color = Color(0xFFB45309),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        IconButton(onClick = onSettingsClick) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Pengaturan",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { paddingValues ->
         Column(
@@ -151,7 +227,10 @@ fun HomeScreen(
                         totalDeleted = conversations.sumOf { it.deletedCount },
                         badgeColor = PrimaryBlue,
                         isSelected = selectedFilter == "ALL",
-                        onClick = { selectedFilter = "ALL" }
+                        onClick = {
+                            selectedFilter = "ALL"
+                            selectedConversations = emptySet()
+                        }
                     )
                 }
                 item {
@@ -161,7 +240,10 @@ fun HomeScreen(
                         totalDeleted = waList.sumOf { it.deletedCount },
                         badgeColor = Color(0xFF25D366),
                         isSelected = selectedFilter == "whatsapp",
-                        onClick = { selectedFilter = "whatsapp" }
+                        onClick = {
+                            selectedFilter = "whatsapp"
+                            selectedConversations = emptySet()
+                        }
                     )
                 }
                 item {
@@ -171,7 +253,10 @@ fun HomeScreen(
                         totalDeleted = igList.sumOf { it.deletedCount },
                         badgeColor = Color(0xFFE1306C),
                         isSelected = selectedFilter == "instagram",
-                        onClick = { selectedFilter = "instagram" }
+                        onClick = {
+                            selectedFilter = "instagram"
+                            selectedConversations = emptySet()
+                        }
                     )
                 }
                 item {
@@ -181,7 +266,10 @@ fun HomeScreen(
                         totalDeleted = tgList.sumOf { it.deletedCount },
                         badgeColor = Color(0xFF0088CC),
                         isSelected = selectedFilter == "telegram",
-                        onClick = { selectedFilter = "telegram" }
+                        onClick = {
+                            selectedFilter = "telegram"
+                            selectedConversations = emptySet()
+                        }
                     )
                 }
             }
@@ -200,9 +288,28 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(filteredList, key = { it.id }) { conversation ->
+                        val isSelected = selectedConversations.contains(conversation)
                         ConversationCard(
                             conversation = conversation,
-                            onClick = { onConversationClick(conversation) },
+                            isSelectionMode = isSelectionMode,
+                            isSelected = isSelected,
+                            onClick = {
+                                if (isSelectionMode) {
+                                    selectedConversations = if (isSelected) {
+                                        selectedConversations - conversation
+                                    } else {
+                                        selectedConversations + conversation
+                                    }
+                                } else {
+                                    onConversationClick(conversation)
+                                }
+                            },
+                            onLongClick = {
+                                if (!isSelectionMode) {
+                                    isSelectionMode = true
+                                    selectedConversations = setOf(conversation)
+                                }
+                            },
                             onDeleteClick = { conversationToDelete = conversation }
                         )
                     }
@@ -210,7 +317,7 @@ fun HomeScreen(
             }
         }
 
-        // Dialog Konfirmasi Hapus Chat
+        // Dialog Konfirmasi Hapus Chat Satuan
         conversationToDelete?.let { conv ->
             AlertDialog(
                 onDismissRequest = { conversationToDelete = null },
@@ -229,6 +336,33 @@ fun HomeScreen(
                 },
                 dismissButton = {
                     OutlinedButton(onClick = { conversationToDelete = null }) {
+                        Text("Batal")
+                    }
+                }
+            )
+        }
+
+        // Dialog Konfirmasi Hapus Massal (Bulk Delete Chat)
+        if (showBulkDeleteDialog && selectedConversations.isNotEmpty()) {
+            AlertDialog(
+                onDismissRequest = { showBulkDeleteDialog = false },
+                title = { Text("Hapus ${selectedConversations.size} Chat Terpilih?", fontWeight = FontWeight.Bold) },
+                text = { Text("Semua pesan dan riwayat dari ${selectedConversations.size} percakapan yang dipilih akan dihapus permanen.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            onDeleteMultipleConversations(selectedConversations)
+                            showBulkDeleteDialog = false
+                            isSelectionMode = false
+                            selectedConversations = emptySet()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) {
+                        Text("Hapus Semua (${selectedConversations.size})", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showBulkDeleteDialog = false }) {
                         Text("Batal")
                     }
                 }
@@ -533,10 +667,14 @@ fun StepRow(number: String, title: String, desc: String) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ConversationCard(
     conversation: ConversationEntity,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onDeleteClick: () -> Unit = {}
 ) {
     val appBadgeColor = when {
@@ -561,10 +699,14 @@ fun ConversationCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp
+        color = if (isSelected) Color(0xFFEFF6FF) else MaterialTheme.colorScheme.surface,
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, PrimaryBlue) else null,
+        shadowElevation = if (isSelected) 3.dp else 1.dp
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -574,24 +716,33 @@ fun ConversationCard(
                 modifier = Modifier
                     .size(46.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFE2E8F0)),
+                    .background(if (isSelected) PrimaryBlue else Color(0xFFE2E8F0)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = conversation.chatTitle.take(1).uppercase(),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = TextPrimaryLight
-                )
-                Surface(
-                    shape = CircleShape,
-                    color = appBadgeColor,
-                    modifier = Modifier
-                        .size(16.dp)
-                        .align(Alignment.BottomEnd)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(appName.take(1), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                if (isSelected) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Terpilih",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else {
+                    Text(
+                        text = conversation.chatTitle.take(1).uppercase(),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = TextPrimaryLight
+                    )
+                    Surface(
+                        shape = CircleShape,
+                        color = appBadgeColor,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .align(Alignment.BottomEnd)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(appName.take(1), color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -663,16 +814,18 @@ fun ConversationCard(
                 }
             }
 
-            IconButton(
-                onClick = onDeleteClick,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Hapus Percakapan",
-                    tint = Color(0xFF94A3B8),
-                    modifier = Modifier.size(18.dp)
-                )
+            if (!isSelectionMode) {
+                IconButton(
+                    onClick = onDeleteClick,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Hapus Percakapan",
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }

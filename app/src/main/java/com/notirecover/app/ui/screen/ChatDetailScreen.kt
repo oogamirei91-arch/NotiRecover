@@ -38,6 +38,7 @@ fun ChatDetailScreen(
     onDeleteConversation: () -> Unit = {},
     onDeleteMessage: (MessageEntity) -> Unit = {}
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var messageToDelete by remember { mutableStateOf<MessageEntity?>(null) }
 
@@ -72,6 +73,16 @@ fun ChatDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        com.notirecover.app.util.ExportChatHelper.exportChatAsHtml(context, conversation, messages)
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Ekspor Chat (PDF/HTML)",
+                            tint = Color(0xFF2563EB)
+                        )
+                    }
+
                     IconButton(onClick = { showDeleteAllDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.Delete,

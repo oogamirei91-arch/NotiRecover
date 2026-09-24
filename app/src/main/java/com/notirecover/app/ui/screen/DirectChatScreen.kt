@@ -142,12 +142,42 @@ fun DirectChatScreen() {
                 placeholder = { Text("Halo, saya ingin bertanya...") },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(130.dp),
+                    .height(110.dp),
                 shape = RoundedCornerShape(12.dp),
-                maxLines = 5
+                maxLines = 4
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Template Pesan Cepat (Quick Templates)
+            val templates = listOf(
+                "Halo, apakah ini masih ada?",
+                "Halo, saya ingin konfirmasi pesanan.",
+                "Boleh minta share lokasi terkini?",
+                "Halo, mohon info rinciannya ya."
+            )
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(templates.size) { idx ->
+                    val text = templates[idx]
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = androidx.compose.ui.Modifier.clickable { messageText = text }
+                    ) {
+                        Text(
+                            text = text,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = androidx.compose.ui.Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Tombol Kirim ke WhatsApp Resmi
             Button(

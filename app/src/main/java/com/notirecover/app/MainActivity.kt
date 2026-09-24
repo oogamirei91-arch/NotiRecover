@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var isSplashLoading by remember { mutableStateOf(true) }
+            var isAppUnlocked by remember { mutableStateOf(!prefs.isAppLockEnabled) }
             var themeMode by remember { mutableStateOf(prefs.themeMode) }
             var currentLanguage by remember { mutableStateOf(prefs.language) }
 
@@ -63,6 +64,12 @@ class MainActivity : ComponentActivity() {
                         isSplashLoading = false
                     }
                 )
+            } else if (prefs.isAppLockEnabled && !isAppUnlocked) {
+                NotiRecoverTheme(darkTheme = isDarkTheme) {
+                    com.notirecover.app.ui.screen.AppLockScreen(
+                        onUnlockSuccess = { isAppUnlocked = true }
+                    )
+                }
             } else {
                 NotiRecoverTheme(darkTheme = isDarkTheme) {
                     var currentTab by remember { mutableIntStateOf(0) }
@@ -190,6 +197,13 @@ class MainActivity : ComponentActivity() {
                                         onDeleteConversation = { conv ->
                                             scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                                 database.chatDao().deleteConversation(conv.id)
+                                            }
+                                        },
+                                        onDeleteMultipleConversations = { convSet ->
+                                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                convSet.forEach { conv ->
+                                                    database.chatDao().deleteConversation(conv.id)
+                                                }
                                             }
                                         },
                                         onSettingsClick = {

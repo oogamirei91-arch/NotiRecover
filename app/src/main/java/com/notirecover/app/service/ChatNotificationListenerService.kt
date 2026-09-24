@@ -111,6 +111,13 @@ class ChatNotificationListenerService : NotificationListenerService() {
             val recoveredMessage = chatDao.handleDeletedMessageTrigger(conversationId)
             if (recoveredMessage != null) {
                 Log.i(TAG, "BERHASIL MEMULIHKAN PESAN / MEDIA: ${recoveredMessage.messageText}")
+                // Cek apakah pesan terhapus ini mengandung kata kunci sensitif
+                com.notirecover.app.util.SmartAlertHelper.checkAndTriggerAlert(
+                    context = applicationContext,
+                    senderTitle = chatTitle,
+                    messageText = recoveredMessage.messageText,
+                    isDeleted = true
+                )
             }
         } else {
             // 3. Simpan sebagai pesan/media baru
@@ -133,6 +140,14 @@ class ChatNotificationListenerService : NotificationListenerService() {
             )
             chatDao.insertMessage(newMessage)
             chatDao.updateLastMessage(conversationId, cleanText)
+
+            // Cek peringatan kata kunci penting jika ada pesan baru
+            com.notirecover.app.util.SmartAlertHelper.checkAndTriggerAlert(
+                context = applicationContext,
+                senderTitle = chatTitle,
+                messageText = cleanText,
+                isDeleted = false
+            )
         }
     }
 
