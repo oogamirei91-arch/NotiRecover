@@ -1,7 +1,10 @@
 package com.notirecover.app.ui.screen
 
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,11 +15,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.FolderSpecial
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,21 +30,32 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.notirecover.app.ui.theme.TextSecondaryLight
-import com.notirecover.app.util.StatusItem
+import com.notirecover.app.util.StatusMediaItem
 import com.notirecover.app.util.StatusSaverHelper
+import java.io.InputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatusSaverScreen() {
     val context = LocalContext.current
-    var statusList by remember { mutableStateOf(emptyList<StatusItem>()) }
-    var selectedStatusForPreview by remember { mutableStateOf<StatusItem?>(null) }
-    var isPermissionGranted by remember { mutableStateOf(StatusSaverHelper.isStoragePermissionGranted(context)) }
+    var statusList by remember { mutableStateOf(emptyList<StatusMediaItem>()) }
+    var selectedStatusForPreview by remember { mutableStateOf<StatusMediaItem?>(null) }
+    var hasFolderConnected by remember { mutableStateOf(StatusSaverHelper.getSavedTreeUri(context) != null) }
 
     fun refreshStatuses() {
-        isPermissionGranted = StatusSaverHelper.isStoragePermissionGranted(context)
-        if (isPermissionGranted) {
-            statusList = StatusSaverHelper.getActiveStatuses()
+        statusList = StatusSaverHelper.getAllStatuses(context)
+        hasFolderConnected = StatusSaverHelper.getSavedTreeUri(context) != null || statusList.isNotEmpty()
+    }
+
+    // Launcher Pemilih Folder SAF Resmi Android
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            StatusSaverHelper.saveTreeUri(context, uri)
+            hasFolderConnected = true
+            refreshStatuses()
+            Toast.makeText(context, "Folder WhatsApp Berhasil Dihubungkan! 🎉", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -84,10 +94,10 @@ fun StatusSaverScreen() {
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Banner Izin Penyimpanan Jika Belum Diizinkan
-            if (!isPermissionGranted) {
+            // Banner Hubungkan Folder WhatsApp (Jika Belum Terhubung di Android 11+)
+            if (!hasFolderConnected) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = Color(0xFFFFFBEB),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
                     modifier = Modifier.fillMaxWidth()
@@ -95,14 +105,14 @@ fun StatusSaverScreen() {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.FolderSpecial,
+                                imageVector = Icons.Default.FolderOpen,
                                 contentDescription = null,
                                 tint = Color(0xFFD97706),
                                 modifier = Modifier.size(24.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "Izin Akses Penyimpanan Dibutuhkan",
+                                text = "Hubungkan Folder WhatsApp (Wajib 1x)",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp,
                                 color = Color(0xFF92400E)
@@ -110,19 +120,23 @@ fun StatusSaverScreen() {
                         }
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Agar aplikasi bisa membaca foto & video status WhatsApp di HP Anda, silakan berikan izin 'Akses Semua File'.",
+                            text = "Agar foto & video status dapat terbaca otomatis di HP Anda, klik tombol di bawah lalu tekan 'Gunakan Folder Ini' pada pop-up sistem Android.",
                             fontSize = 12.sp,
-                            color = Color(0xFFB45309)
+                            color = Color(0xFFB45309),
+                            lineHeight = 16.sp
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Button(
                             onClick = {
-                                StatusSaverHelper.requestStoragePermission(context)
+                                folderPickerLauncher.launch(null)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Izinkan Akses Penyimpanan")
+                            Icon(Icons.Default.Folder, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Pilih & Hubungkan Folder WhatsApp", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 }
@@ -148,8 +162,8 @@ fun StatusSaverScreen() {
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "Buka tab Status di WA agar file terunduh di HP, lalu tonton & simpan di sini tanpa nama Anda muncul di daftar penonton!",
-                        fontSize = 12.sp,
+                        text = "Tonton status 1-2 detik di WhatsApp agar file terunduh di HP, lalu simpan permanen di sini!",
+                        fontSize = 11.sp,
                         color = Color(0xFF0369A1)
                     )
                 }
@@ -172,16 +186,23 @@ fun StatusSaverScreen() {
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "1. Buka aplikasi WhatsApp -> Masuk ke tab Pembaruan / Status sebentar.\n2. Kembali ke sini lalu klik tombol 'Segarkan Status'.",
+                            text = "1. Buka aplikasi WhatsApp -> Tonton status teman selama 1–2 detik.\n2. Kembali ke sini dan klik 'Segarkan Status'.",
                             fontSize = 12.sp,
                             color = TextSecondaryLight,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { refreshStatuses() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Segarkan Status")
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(onClick = { folderPickerLauncher.launch(null) }) {
+                                Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Pilih Folder")
+                            }
+                            Button(onClick = { refreshStatuses() }) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Segarkan")
+                            }
                         }
                     }
                 }
@@ -192,7 +213,7 @@ fun StatusSaverScreen() {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(statusList, key = { it.file.absolutePath }) { item ->
+                    items(statusList, key = { it.uri.toString() }) { item ->
                         StatusGridCard(
                             statusItem = item,
                             onClick = { selectedStatusForPreview = item },
@@ -230,13 +251,23 @@ fun StatusSaverScreen() {
 
 @Composable
 fun StatusGridCard(
-    statusItem: StatusItem,
+    statusItem: StatusMediaItem,
     onClick: () -> Unit,
     onSaveClick: () -> Unit
 ) {
-    val bitmap = remember(statusItem.file.absolutePath) {
-        if (!statusItem.isVideo && statusItem.file.exists()) {
-            BitmapFactory.decodeFile(statusItem.file.absolutePath)
+    val context = LocalContext.current
+    val bitmap = remember(statusItem.uri) {
+        if (!statusItem.isVideo) {
+            try {
+                val inputStream: InputStream? = if (statusItem.file != null) {
+                    java.io.FileInputStream(statusItem.file)
+                } else {
+                    context.contentResolver.openInputStream(statusItem.uri)
+                }
+                inputStream?.use { BitmapFactory.decodeStream(it) }
+            } catch (e: Exception) {
+                null
+            }
         } else {
             null
         }
@@ -300,13 +331,23 @@ fun StatusGridCard(
 
 @Composable
 fun StatusPreviewDialog(
-    statusItem: StatusItem,
+    statusItem: StatusMediaItem,
     onDismiss: () -> Unit,
     onSave: () -> Unit
 ) {
-    val bitmap = remember(statusItem.file.absolutePath) {
-        if (!statusItem.isVideo && statusItem.file.exists()) {
-            BitmapFactory.decodeFile(statusItem.file.absolutePath)
+    val context = LocalContext.current
+    val bitmap = remember(statusItem.uri) {
+        if (!statusItem.isVideo) {
+            try {
+                val inputStream: InputStream? = if (statusItem.file != null) {
+                    java.io.FileInputStream(statusItem.file)
+                } else {
+                    context.contentResolver.openInputStream(statusItem.uri)
+                }
+                inputStream?.use { BitmapFactory.decodeStream(it) }
+            } catch (e: Exception) {
+                null
+            }
         } else {
             null
         }
@@ -327,7 +368,7 @@ fun StatusPreviewDialog(
                     fontSize = 16.sp
                 )
                 Text(
-                    text = "Ditonton tanpa mengirim notifikasi dilihat",
+                    text = "Tersimpan lokal & ditonton tanpa terdeteksi",
                     fontSize = 11.sp,
                     color = Color(0xFF0369A1)
                 )
@@ -354,7 +395,7 @@ fun StatusPreviewDialog(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(48.dp))
-                            Text("File Video: ${statusItem.file.name}", color = Color.White, fontSize = 12.sp)
+                            Text("Video Status: ${statusItem.name}", color = Color.White, fontSize = 12.sp)
                         }
                     }
                 }

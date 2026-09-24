@@ -47,19 +47,17 @@ fun HomeScreen(
 ) {
     var selectedFilter by remember { mutableStateOf("ALL") }
 
-    val filterOptions = listOf(
-        "ALL" to if (currentLanguage == "ID") "Semua" else "All",
-        "com.whatsapp" to "WhatsApp",
-        "com.instagram.android" to "Instagram",
-        "org.telegram.messenger" to "Telegram",
-        "com.facebook.orca" to "Messenger"
-    )
+    // Hitung statistik per-akun / per-sosmed
+    val waList = remember(conversations) { conversations.filter { it.packageName.contains("whatsapp") } }
+    val igList = remember(conversations) { conversations.filter { it.packageName.contains("instagram") } }
+    val tgList = remember(conversations) { conversations.filter { it.packageName.contains("telegram") } }
+    val fbList = remember(conversations) { conversations.filter { it.packageName.contains("facebook") || it.packageName.contains("orca") } }
 
     val filteredList = remember(conversations, selectedFilter) {
         if (selectedFilter == "ALL") {
             conversations
         } else {
-            conversations.filter { it.packageName == selectedFilter }
+            conversations.filter { it.packageName.contains(selectedFilter) }
         }
     }
 
@@ -97,7 +95,6 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    // Badge PRO
                     Surface(
                         color = Color(0xFFFEF3C7),
                         shape = RoundedCornerShape(16.dp),
@@ -112,7 +109,6 @@ fun HomeScreen(
                         )
                     }
 
-                    // Shortcut Roda Gerigi (Pengaturan) di Pojok Kanan Atas
                     IconButton(onClick = onSettingsClick) {
                         Icon(
                             imageVector = Icons.Default.Settings,
@@ -136,21 +132,54 @@ fun HomeScreen(
                 onEnableClick = onEnableServiceClick
             )
 
-            if (conversations.isNotEmpty()) {
-                // Filter Chips Sosmed
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(filterOptions) { (key, label) ->
-                        FilterChip(
-                            selected = selectedFilter == key,
-                            onClick = { selectedFilter = key },
-                            label = { Text(label, fontSize = 12.sp) }
-                        )
-                    }
+            // =========================================================================
+            // HUB PER-AKUN SOSMED (TAMPILAN STATISTIK & FILTER CEPAT PER AKUN)
+            // =========================================================================
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item {
+                    AccountCard(
+                        title = "Semua Akun",
+                        totalChats = conversations.size,
+                        totalDeleted = conversations.sumOf { it.deletedCount },
+                        badgeColor = PrimaryBlue,
+                        isSelected = selectedFilter == "ALL",
+                        onClick = { selectedFilter = "ALL" }
+                    )
+                }
+                item {
+                    AccountCard(
+                        title = "WhatsApp",
+                        totalChats = waList.size,
+                        totalDeleted = waList.sumOf { it.deletedCount },
+                        badgeColor = Color(0xFF25D366),
+                        isSelected = selectedFilter == "whatsapp",
+                        onClick = { selectedFilter = "whatsapp" }
+                    )
+                }
+                item {
+                    AccountCard(
+                        title = "Instagram",
+                        totalChats = igList.size,
+                        totalDeleted = igList.sumOf { it.deletedCount },
+                        badgeColor = Color(0xFFE1306C),
+                        isSelected = selectedFilter == "instagram",
+                        onClick = { selectedFilter = "instagram" }
+                    )
+                }
+                item {
+                    AccountCard(
+                        title = "Telegram",
+                        totalChats = tgList.size,
+                        totalDeleted = tgList.sumOf { it.deletedCount },
+                        badgeColor = Color(0xFF0088CC),
+                        isSelected = selectedFilter == "telegram",
+                        onClick = { selectedFilter = "telegram" }
+                    )
                 }
             }
 
@@ -164,7 +193,7 @@ fun HomeScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(filteredList, key = { it.id }) { conversation ->
@@ -174,6 +203,74 @@ fun HomeScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun AccountCard(
+    title: String,
+    totalChats: Int,
+    totalDeleted: Int,
+    badgeColor: Color,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .width(135.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(14.dp),
+        color = if (isSelected) badgeColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            if (isSelected) 1.5.dp else 1.dp,
+            if (isSelected) badgeColor else Color(0xFFE2E8F0)
+        ),
+        shadowElevation = if (isSelected) 2.dp else 0.dp
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = if (isSelected) badgeColor else MaterialTheme.colorScheme.onSurface
+                )
+                Surface(
+                    shape = CircleShape,
+                    color = badgeColor,
+                    modifier = Modifier.size(8.dp)
+                ) {}
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = "$totalChats Kontak",
+                fontSize = 11.sp,
+                color = TextSecondaryLight
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            if (totalDeleted > 0) {
+                Text(
+                    text = "🗑️ $totalDeleted Dihapus",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFDC2626)
+                )
+            } else {
+                Text(
+                    text = "0 Terhapus",
+                    fontSize = 10.sp,
+                    color = Color(0xFF94A3B8)
+                )
             }
         }
     }
@@ -257,7 +354,6 @@ fun WelcomeEmptyStateView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Hero Card Selamat Datang
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -297,7 +393,6 @@ fun WelcomeEmptyStateView(
             }
         }
 
-        // Contoh Simulasi Tampilan Pesan Terhapus
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -346,7 +441,6 @@ fun WelcomeEmptyStateView(
             }
         }
 
-        // Panduan 3 Langkah
         item {
             Surface(
                 modifier = Modifier.fillMaxWidth(),

@@ -2,6 +2,7 @@ package com.notirecover.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
@@ -36,7 +37,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Cek dan pulihkan database SQLite jika sebelumnya pernah ada cadangan saat aplikasi di-uninstall
         BackupHelper.restoreDatabaseIfAvailable(this)
 
         val app = application as NotiRecoverApp
@@ -48,7 +48,6 @@ class MainActivity : ComponentActivity() {
             var themeMode by remember { mutableStateOf(prefs.themeMode) }
             var currentLanguage by remember { mutableStateOf(prefs.language) }
 
-            // Evaluasi Tema
             val systemDark = isSystemInDarkTheme()
             val isDarkTheme = when (themeMode) {
                 AppPreferences.THEME_LIGHT -> false
@@ -57,7 +56,6 @@ class MainActivity : ComponentActivity() {
             }
 
             if (isSplashLoading) {
-                // Layar Loading / Splash Screen Animatif
                 SplashScreen(
                     onLoadingComplete = {
                         isSplashLoading = false
@@ -79,6 +77,23 @@ class MainActivity : ComponentActivity() {
                         .collectAsState(initial = emptyList())
 
                     var selectedConversation by remember { mutableStateOf<ConversationEntity?>(null) }
+
+                    // =========================================================================
+                    // PENANGANAN TOMBOL BACK SISTEM (SMART BACK NAVIGATION)
+                    // =========================================================================
+                    BackHandler(enabled = isShowingSettings || selectedConversation != null || currentTab != 0) {
+                        when {
+                            isShowingSettings -> {
+                                isShowingSettings = false
+                            }
+                            selectedConversation != null -> {
+                                selectedConversation = null
+                            }
+                            currentTab != 0 -> {
+                                currentTab = 0 // Kembali ke tab Pesan (Utama)
+                            }
+                        }
+                    }
 
                     if (isShowingSettings) {
                         SettingsScreen(
@@ -175,7 +190,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        // Otomatis cadangkan database SQLite ke Documents/ChatRestore saat aplikasi di-minimize
         BackupHelper.backupDatabase(this)
     }
 }

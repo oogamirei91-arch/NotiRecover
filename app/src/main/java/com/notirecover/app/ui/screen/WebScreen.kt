@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ZoomIn
@@ -25,15 +26,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.notirecover.app.util.WebAppInterface
 
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun WebScreen() {
+    val context = LocalContext.current
     var selectedWeb by remember { mutableStateOf("WHATSAPP") }
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var progress by remember { mutableIntStateOf(0) }
@@ -47,6 +51,75 @@ fun WebScreen() {
         webViewInstance?.settings?.userAgentString = if (isDesktopMode) desktopUA else mobileUA
         webViewInstance?.loadUrl(targetUrl)
     }
+
+    val downloadStatusJs = """
+        (function() {
+            try {
+                // 1. Cari video status aktif
+                const videos = Array.from(document.querySelectorAll('video'));
+                for (let vid of videos) {
+                    if (vid.src && vid.offsetWidth > 100 && vid.offsetHeight > 100) {
+                        fetch(vid.src)
+                            .then(r => r.blob())
+                            .then(blob => {
+                                const reader = new FileReader();
+                                reader.onloadend = function() {
+                                    window.AndroidDownloader.onMediaDownloaded(reader.result, blob.type || 'video/mp4', 'wa_status.mp4');
+                                };
+                                reader.readAsDataURL(blob);
+                            })
+                            .catch(e => {
+                                console.error('Fetch video error', e);
+                            });
+                        return;
+                    }
+                }
+
+                // 2. Cari gambar status aktif berukuran besar
+                const imgs = Array.from(document.querySelectorAll('img')).filter(img => {
+                    return img.src && (img.src.startsWith('blob:') || img.src.startsWith('http') || img.src.startsWith('data:')) &&
+                           img.offsetWidth > 180 && img.offsetHeight > 180;
+                });
+
+                imgs.sort((a, b) => (b.offsetWidth * b.offsetHeight) - (a.offsetWidth * a.offsetHeight));
+
+                if (imgs.length > 0) {
+                    const bestImg = imgs[0];
+                    if (bestImg.src.startsWith('data:')) {
+                        window.AndroidDownloader.onMediaDownloaded(bestImg.src, 'image/jpeg', 'wa_status.jpg');
+                        return;
+                    }
+                    fetch(bestImg.src)
+                        .then(r => r.blob())
+                        .then(blob => {
+                            const reader = new FileReader();
+                            reader.onloadend = function() {
+                                window.AndroidDownloader.onMediaDownloaded(reader.result, blob.type || 'image/jpeg', 'wa_status.jpg');
+                            };
+                            reader.readAsDataURL(blob);
+                        })
+                        .catch(e => {
+                            try {
+                                const canvas = document.createElement('canvas');
+                                canvas.width = bestImg.naturalWidth || bestImg.offsetWidth;
+                                canvas.height = bestImg.naturalHeight || bestImg.offsetHeight;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(bestImg, 0, 0);
+                                const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+                                window.AndroidDownloader.onMediaDownloaded(dataUrl, 'image/jpeg', 'wa_status.jpg');
+                            } catch (err) {
+                                alert('Gagal mendownload gambar: ' + err.message);
+                            }
+                        });
+                    return;
+                }
+
+                alert('Tidak ada status foto/video yang sedang terbuka di layar. Buka status teman terlebih dahulu!');
+            } catch (err) {
+                alert('Terjadi kesalahan: ' + err.message);
+            }
+        })();
+    """.trimIndent()
 
     Scaffold(
         topBar = {
@@ -82,6 +155,19 @@ fun WebScreen() {
                     }
                 }
             )
+        },
+        floatingActionButton = {
+            if (selectedWeb == "WHATSAPP") {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        webViewInstance?.evaluateJavascript(downloadStatusJs, null)
+                    },
+                    icon = { Icon(Icons.Default.FileDownload, contentDescription = "Unduh Status") },
+                    text = { Text("Unduh Status di Layar", fontWeight = FontWeight.Bold) },
+                    containerColor = Color(0xFF10B981),
+                    contentColor = Color.White
+                )
+            }
         },
         bottomBar = {
             // Bilah Navigasi Kontrol WebView Cepat
@@ -168,8 +254,8 @@ fun WebScreen() {
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1f),
-                factory = { context ->
-                    WebView(context).apply {
+                factory = { ctx ->
+                    WebView(ctx).apply {
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
@@ -188,6 +274,9 @@ fun WebScreen() {
                             userAgentString = desktopUA
                             textZoom = 100
                         }
+
+                        // Hubungkan JavaScript Interface Downloader
+                        addJavascriptInterface(WebAppInterface(ctx), "AndroidDownloader")
 
                         setInitialScale(100)
 
