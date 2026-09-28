@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import com.notirecover.app.data.AppDatabase
 import com.notirecover.app.data.model.ConversationEntity
 import com.notirecover.app.data.model.MessageEntity
@@ -14,6 +15,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+
+data class ParsedChatNotification(
+    val chatTitle: String,     // Nama grup (jika grup) atau nama kontak (jika chat pribadi)
+    val senderName: String,    // Nama pengirim spesifik (misal anggota dalam grup: "Budi")
+    val messageText: String,   // Pesan teks bersih
+    val isGroup: Boolean       // Menandakan apakah percakapan grup
+)
 
 class ChatNotificationListenerService : NotificationListenerService() {
 
@@ -57,46 +65,146 @@ class ChatNotificationListenerService : NotificationListenerService() {
 
         val extras = notification.extras ?: return
 
-        val title = extractTitle(extras) ?: return
-        val rawMessageText = extractMessageText(extras)
+        // 2. Ekstrak data chat terstruktur (memisahkan nama grup & nama pengirim asli)
+        val parsed = parseNotification(notification, extras) ?: return
 
-        // 2. Abaikan notifikasi sistem internal
-        if (DeletedMessageClassifier.isSystemNotification(title, rawMessageText)) {
-            Log.d(TAG, "Mengabaikan notifikasi sistem: $title - $rawMessageText")
+        // 3. Abaikan notifikasi sistem internal
+        if (DeletedMessageClassifier.isSystemNotification(parsed.chatTitle, parsed.messageText)) {
+            Log.d(TAG, "Mengabaikan notifikasi sistem: ${parsed.chatTitle} - ${parsed.messageText}")
             return
         }
 
-        // Coba ekstrak foto dari notifikasi (jika pengirim mengirim gambar)
+        // 4. Ekstrak foto dari notifikasi dengan anti-duplikasi MD5
         val savedMediaPath = MediaHelper.saveNotificationMedia(applicationContext, notification)
 
-        // 3. Abaikan placeholder "sent a photo" / "3 new messages" jika tidak ada teks asli atau media yang tersimpan
-        if (DeletedMessageClassifier.isPlaceholderOrSummary(title, rawMessageText, savedMediaPath != null)) {
-            Log.d(TAG, "Mengabaikan teks placeholder / counter: '$rawMessageText' dari '$title'")
-            return
+        // 5. Abaikan placeholder "sent a photo" / summary jika tidak ada foto baru
+        if (DeletedMessageClassifier.isPlaceholderOrSummary(parsed.chatTitle, parsed.messageText, savedMediaPath != null)) {
+            if (savedMediaPath == null) {
+                Log.d(TAG, "Mengabaikan teks placeholder / counter: '${parsed.messageText}' dari '${parsed.chatTitle}'")
+                return
+            }
         }
 
-        val messageText = rawMessageText ?: if (savedMediaPath != null) "📷 [Foto]" else return
+        val rawText = parsed.messageText
+        val messageText = if (rawText.isNotBlank()) rawText else if (savedMediaPath != null) "📷 [Foto]" else return
 
         serviceScope.launch {
-            processIncomingNotification(packageName, title, messageText, savedMediaPath)
+            processIncomingNotification(
+                packageName = packageName,
+                chatTitle = parsed.chatTitle,
+                senderName = parsed.senderName,
+                isGroup = parsed.isGroup,
+                messageText = messageText,
+                savedMediaPath = savedMediaPath
+            )
         }
+    }
+
+    /**
+     * Membedah notifikasi WhatsApp/Telegram untuk memisahkan Nama Grup dan Nama Anggota Pengirim.
+     */
+    private fun parseNotification(notification: Notification, extras: Bundle): ParsedChatNotification? {
+        val messagingStyle = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
+        val conversationTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()?.trim()
+        val rawTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
+        val isGroupExtra = extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)
+
+        var chatTitle = ""
+        var senderName = ""
+        var messageText: String? = null
+        var isGroup = false
+
+        if (messagingStyle != null) {
+            isGroup = messagingStyle.isGroupConversation || !conversationTitle.isNullOrBlank() || isGroupExtra
+            val latestMsg = messagingStyle.messages.lastOrNull()
+
+            if (isGroup) {
+                // Dalam chat grup: conversationTitle adalah NAMA GRUP
+                chatTitle = conversationTitle
+                    ?: messagingStyle.conversationTitle?.toString()?.trim()
+                    ?: if (rawTitle.contains(" @ ")) rawTitle.substringAfter(" @ ").trim() else rawTitle
+
+                // senderName adalah orang yang mengirim pesan di dalam grup
+                senderName = latestMsg?.person?.name?.toString()?.trim()
+                    ?: latestMsg?.senderPerson?.name?.toString()?.trim()
+                    ?: if (rawTitle.contains(" @ ")) rawTitle.substringBefore(" @ ").trim() else rawTitle
+
+                messageText = latestMsg?.text?.toString()?.trim()
+            } else {
+                // Chat pribadi (1-on-1)
+                chatTitle = rawTitle.ifBlank { latestMsg?.person?.name?.toString()?.trim().orEmpty() }
+                senderName = chatTitle
+                messageText = latestMsg?.text?.toString()?.trim()
+            }
+        }
+
+        // Fallback jika bukan MessagingStyle atau kosong
+        if (chatTitle.isBlank()) {
+            if (!conversationTitle.isNullOrBlank()) {
+                isGroup = true
+                chatTitle = conversationTitle
+                senderName = rawTitle.ifBlank { conversationTitle }
+            } else if (rawTitle.contains(" @ ")) {
+                isGroup = true
+                senderName = rawTitle.substringBefore(" @ ").trim()
+                chatTitle = rawTitle.substringAfter(" @ ").trim()
+            } else if (rawTitle.contains(":") && isGroupExtra) {
+                isGroup = true
+                chatTitle = rawTitle.substringBefore(":").trim()
+                senderName = rawTitle.substringAfter(":").trim()
+            } else {
+                chatTitle = rawTitle
+                senderName = rawTitle
+            }
+        }
+
+        if (messageText == null) {
+            val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+            val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+            messageText = bigText ?: text
+        }
+
+        // Jika notifikasi grup memiliki format teks "Budi: Halo semuanya"
+        if (messageText != null && messageText.contains(": ")) {
+            val prefix = messageText.substringBefore(": ").trim()
+            val body = messageText.substringAfter(": ").trim()
+            if (prefix.length in 1..40 && !prefix.contains("\n")) {
+                if (senderName.isBlank() || senderName == chatTitle) {
+                    senderName = prefix
+                    isGroup = true
+                }
+                messageText = body
+            }
+        }
+
+        if (chatTitle.isBlank()) return null
+        if (senderName.isBlank()) senderName = chatTitle
+
+        return ParsedChatNotification(
+            chatTitle = chatTitle,
+            senderName = senderName,
+            messageText = messageText.orEmpty(),
+            isGroup = isGroup
+        )
     }
 
     private suspend fun processIncomingNotification(
         packageName: String,
         chatTitle: String,
+        senderName: String,
+        isGroup: Boolean,
         messageText: String,
         savedMediaPath: String?
     ) {
         val chatDao = database.chatDao()
 
-        // 1. Cari atau buat percakapan
+        // 1. Cari atau buat percakapan (Grup memiliki 1 entitas chat tersendiri di database)
         var conversation = chatDao.getConversation(packageName, chatTitle)
         if (conversation == null) {
             val newConversation = ConversationEntity(
                 packageName = packageName,
                 chatTitle = chatTitle,
-                lastMessage = messageText,
+                lastMessage = if (isGroup && senderName != chatTitle) "$senderName: $messageText" else messageText,
                 updatedAt = System.currentTimeMillis()
             )
             val newId = chatDao.insertConversation(newConversation)
@@ -114,16 +222,47 @@ class ChatNotificationListenerService : NotificationListenerService() {
                 // Cek apakah pesan terhapus ini mengandung kata kunci sensitif
                 com.notirecover.app.util.SmartAlertHelper.checkAndTriggerAlert(
                     context = applicationContext,
-                    senderTitle = chatTitle,
+                    senderTitle = if (isGroup) "$chatTitle (${recoveredMessage.senderName})" else chatTitle,
                     messageText = recoveredMessage.messageText,
                     isDeleted = true
                 )
             }
         } else {
-            // 3. Simpan sebagai pesan/media baru
-            val messageType = if (savedMediaPath != null) MessageEntity.TYPE_IMAGE else MessageEntity.TYPE_TEXT
+            // 3. Pencegahan Duplikasi Media & Pesan Berulang
+            var finalMediaPath = savedMediaPath
 
-            val cleanText = if (savedMediaPath != null && (messageText.isBlank() || messageText.lowercase().contains("sent a photo") || messageText.lowercase().contains("mengirim foto"))) {
+            if (finalMediaPath != null) {
+                // Cek apakah foto dengan path/hash ini SUDAH PERNAH dicatat dalam percakapan ini
+                val alreadyHasMedia = chatDao.countMediaInConversation(conversationId, finalMediaPath) > 0
+                if (alreadyHasMedia) {
+                    if (messageText.isBlank() || messageText == "📷 [Foto]" ||
+                        DeletedMessageClassifier.isPlaceholderOrSummary(chatTitle, messageText, true)
+                    ) {
+                        Log.d(TAG, "Mengabaikan media duplikat yang sudah tersimpan: $finalMediaPath")
+                        return
+                    } else {
+                        // Notifikasi membawa pesan teks baru, tapi extras masih menyertakan foto lama
+                        finalMediaPath = null
+                    }
+                }
+            }
+
+            // Cek duplikasi teks identik dalam rentang 3 detik terakhir untuk menghindari multi-event update WhatsApp
+            if (finalMediaPath == null && messageText.isNotBlank()) {
+                val recentDuplicate = chatDao.countRecentDuplicateText(
+                    conversationId = conversationId,
+                    messageText = messageText,
+                    sinceTime = System.currentTimeMillis() - 3000L
+                ) > 0
+                if (recentDuplicate) {
+                    Log.d(TAG, "Mengabaikan notifikasi teks duplikat dalam 3 detik: '$messageText'")
+                    return
+                }
+            }
+
+            val messageType = if (finalMediaPath != null) MessageEntity.TYPE_IMAGE else MessageEntity.TYPE_TEXT
+
+            val cleanText = if (finalMediaPath != null && (messageText.isBlank() || messageText.lowercase().contains("sent a photo") || messageText.lowercase().contains("mengirim foto"))) {
                 "📷 [Foto]"
             } else {
                 messageText
@@ -131,44 +270,26 @@ class ChatNotificationListenerService : NotificationListenerService() {
 
             val newMessage = MessageEntity(
                 conversationId = conversationId,
-                senderName = chatTitle,
+                senderName = senderName, // Nama pengirim spesifik di dalam grup!
                 messageText = cleanText,
-                mediaUri = savedMediaPath,
+                mediaUri = finalMediaPath,
                 messageType = messageType,
                 isDeleted = false,
                 receivedAt = System.currentTimeMillis()
             )
             chatDao.insertMessage(newMessage)
-            chatDao.updateLastMessage(conversationId, cleanText)
+
+            val displayLastMessage = if (isGroup && senderName != chatTitle) "$senderName: $cleanText" else cleanText
+            chatDao.updateLastMessage(conversationId, displayLastMessage)
 
             // Cek peringatan kata kunci penting jika ada pesan baru
             com.notirecover.app.util.SmartAlertHelper.checkAndTriggerAlert(
                 context = applicationContext,
-                senderTitle = chatTitle,
+                senderTitle = if (isGroup) "$chatTitle ($senderName)" else chatTitle,
                 messageText = cleanText,
                 isDeleted = false
             )
         }
-    }
-
-    private fun extractTitle(extras: Bundle): String? {
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
-        if (!title.isNullOrBlank()) return title
-
-        val conversationTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()
-        if (!conversationTitle.isNullOrBlank()) return conversationTitle
-
-        return null
-    }
-
-    private fun extractMessageText(extras: Bundle): String? {
-        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
-        if (!bigText.isNullOrBlank()) return bigText
-
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
-        if (!text.isNullOrBlank()) return text
-
-        return null
     }
 
     override fun onDestroy() {

@@ -37,14 +37,27 @@ object MediaHelper {
                 mediaDir.mkdirs()
             }
 
-            val fileName = "img_${System.currentTimeMillis()}_${(1000..9999).random()}.jpg"
+            // Kompres ke byte array untuk kalkulasi Hash MD5 (Anti-Duplikasi File)
+            val byteStream = java.io.ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, byteStream)
+            val bytes = byteStream.toByteArray()
+
+            val md5Digest = java.security.MessageDigest.getInstance("MD5")
+            val hashBytes = md5Digest.digest(bytes)
+            val hashString = hashBytes.joinToString("") { "%02x".format(it) }
+
+            val fileName = "img_${hashString}.jpg"
             val destFile = File(mediaDir, fileName)
 
-            FileOutputStream(destFile).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+            if (!destFile.exists() || destFile.length() == 0L) {
+                FileOutputStream(destFile).use { out ->
+                    out.write(bytes)
+                }
+                Log.i(TAG, "Foto baru berhasil disimpan ke: ${destFile.absolutePath}")
+            } else {
+                Log.d(TAG, "Foto sudah ada di cache (skip duplikasi): ${destFile.absolutePath}")
             }
 
-            Log.i(TAG, "Foto WhatsApp berhasil disimpan ke: ${destFile.absolutePath}")
             destFile.absolutePath
         } catch (e: Exception) {
             Log.e(TAG, "Gagal menulis file foto", e)
@@ -57,17 +70,18 @@ object MediaHelper {
         extras: Bundle,
         notification: Notification
     ): Bitmap? {
-        // 1. Ekstrak dari MessagingStyle Data URI (Format WhatsApp & Telegram Terbaru)
+        // 1. Ekstrak dari MessagingStyle Data URI (Hanya periksa pesan TERAKHIR / terbaru!)
         try {
             val messagingStyle = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
             if (messagingStyle != null) {
-                for (message in messagingStyle.messages) {
-                    val dataUri = message.dataUri
-                    val mimeType = message.dataMimeType
+                val latestMsg = messagingStyle.messages.lastOrNull()
+                if (latestMsg != null) {
+                    val dataUri = latestMsg.dataUri
+                    val mimeType = latestMsg.dataMimeType
                     if (dataUri != null && (mimeType == null || mimeType.startsWith("image/"))) {
                         val bitmap = getBitmapFromUri(context, dataUri)
                         if (bitmap != null) {
-                            Log.d(TAG, "Berhasil ekstrak dari MessagingStyle Data URI")
+                            Log.d(TAG, "Berhasil ekstrak dari MessagingStyle pesan terbaru")
                             return bitmap
                         }
                     }

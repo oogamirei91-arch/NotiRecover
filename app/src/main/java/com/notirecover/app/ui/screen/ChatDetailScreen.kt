@@ -49,21 +49,38 @@ fun ChatDetailScreen(
         topBar = {
             TopAppBar(
                 title = {
+                    val isGroup = remember(messages) {
+                        messages.any { it.senderName.isNotBlank() && it.senderName != conversation.chatTitle }
+                    }
+                    val appLabel = when {
+                        conversation.packageName.contains("whatsapp") -> "WhatsApp"
+                        conversation.packageName.contains("instagram") -> "Instagram"
+                        conversation.packageName.contains("telegram") -> "Telegram"
+                        else -> "Social Chat"
+                    }
                     Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isGroup) {
+                                Icon(
+                                    imageVector = Icons.Default.Groups,
+                                    contentDescription = "Grup",
+                                    tint = Color(0xFF2563EB),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            Text(
+                                text = conversation.chatTitle,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp,
+                                maxLines = 1
+                            )
+                        }
                         Text(
-                            text = conversation.chatTitle,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 17.sp
-                        )
-                        Text(
-                            text = when {
-                                conversation.packageName.contains("whatsapp") -> "WhatsApp"
-                                conversation.packageName.contains("instagram") -> "Instagram"
-                                conversation.packageName.contains("telegram") -> "Telegram"
-                                else -> "Social Chat"
-                            },
+                            text = if (isGroup) "👥 Obrolan Grup • $appLabel" else appLabel,
                             fontSize = 12.sp,
-                            color = TextSecondaryLight
+                            color = if (isGroup) Color(0xFF0284C7) else TextSecondaryLight,
+                            fontWeight = if (isGroup) FontWeight.SemiBold else FontWeight.Normal
                         )
                     }
                 },
@@ -126,7 +143,10 @@ fun ChatDetailScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Box(modifier = Modifier.weight(1f)) {
-                            MessageBubble(message = message)
+                            MessageBubble(
+                                message = message,
+                                conversationChatTitle = conversation.chatTitle
+                            )
                         }
 
                         Spacer(modifier = Modifier.width(8.dp))
@@ -205,8 +225,26 @@ fun ChatDetailScreen(
 
 @Composable
 fun MessageBubble(
-    message: MessageEntity
+    message: MessageEntity,
+    conversationChatTitle: String = ""
 ) {
+    val isGroupSender = remember(message.senderName, conversationChatTitle) {
+        message.senderName.isNotBlank() && message.senderName != conversationChatTitle
+    }
+
+    val senderColor = remember(message.senderName) {
+        val colors = listOf(
+            Color(0xFF0284C7), // Sky Blue
+            Color(0xFF059669), // Emerald Green
+            Color(0xFF7C3AED), // Purple
+            Color(0xFFD97706), // Amber
+            Color(0xFFDB2777), // Pink
+            Color(0xFF4F46E5)  // Indigo
+        )
+        val idx = kotlin.math.abs(message.senderName.hashCode()) % colors.size
+        colors[idx]
+    }
+
     val timeReceived = remember(message.receivedAt) {
         SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.receivedAt))
     }
@@ -220,7 +258,10 @@ fun MessageBubble(
     val bitmap = remember(message.mediaUri) {
         message.mediaUri?.let { path ->
             val file = File(path)
-            if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
+            if (file.exists()) {
+                val opts = BitmapFactory.Options().apply { inSampleSize = 2 }
+                BitmapFactory.decodeFile(file.absolutePath, opts)
+            } else null
         }
     }
 
@@ -235,6 +276,17 @@ fun MessageBubble(
             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5))
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
+                // Header Nama Pengirim dalam Grup
+                if (isGroupSender) {
+                    Text(
+                        text = "👤 ${message.senderName}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = senderColor
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
@@ -313,6 +365,17 @@ fun MessageBubble(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
+                // Header Nama Pengirim dalam Grup
+                if (isGroupSender) {
+                    Text(
+                        text = "👤 ${message.senderName}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = senderColor
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
                 if (bitmap != null) {
                     Image(
                         bitmap = bitmap.asImageBitmap(),

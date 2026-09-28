@@ -753,16 +753,31 @@ fun ConversationCard(
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = conversation.chatTitle,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
+                    val isGroupLike = conversation.lastMessage.contains(": ")
+                    Row(
+                        modifier = Modifier.weight(1f, fill = false),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isGroupLike) {
+                            Icon(
+                                imageVector = Icons.Default.Groups,
+                                contentDescription = "Grup",
+                                tint = Color(0xFF2563EB),
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Text(
+                            text = conversation.chatTitle,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Text(
                         text = formattedTime,
                         fontSize = 12.sp,

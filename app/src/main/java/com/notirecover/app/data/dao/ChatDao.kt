@@ -51,6 +51,12 @@ interface ChatDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity): Long
 
+    @Query("SELECT COUNT(*) FROM messages WHERE conversationId = :conversationId AND mediaUri = :mediaUri")
+    suspend fun countMediaInConversation(conversationId: Long, mediaUri: String): Int
+
+    @Query("SELECT COUNT(*) FROM messages WHERE conversationId = :conversationId AND messageText = :messageText AND receivedAt > :sinceTime")
+    suspend fun countRecentDuplicateText(conversationId: Long, messageText: String, sinceTime: Long): Int
+
     @Query("""
         SELECT * FROM messages 
         WHERE conversationId = :conversationId 
