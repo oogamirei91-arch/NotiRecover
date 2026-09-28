@@ -216,10 +216,13 @@ object StatusSaverHelper {
 
     /**
      * Menyimpan foto/video status ke Galeri HP (Pictures/ChatRestore).
+     * Jika customName diberikan (nama teman), nama file akan diawali dengan nama teman tersebut.
      */
-    fun saveStatusToGallery(context: Context, statusItem: StatusMediaItem): Boolean {
+    fun saveStatusToGallery(context: Context, statusItem: StatusMediaItem, customName: String? = null): Boolean {
         return try {
-            val fileName = "ChatRestore_${System.currentTimeMillis()}_${statusItem.name}"
+            val cleanCustom = customName?.trim()?.replace(Regex("[^a-zA-Z0-9_\\-]"), "_")
+            val prefix = if (!cleanCustom.isNullOrBlank()) "Status_${cleanCustom}_" else "ChatRestore_"
+            val fileName = "${prefix}${System.currentTimeMillis()}_${statusItem.name}"
             val mimeType = if (statusItem.isVideo) "video/mp4" else "image/jpeg"
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -434,5 +437,30 @@ object StatusSaverHelper {
             Log.e(TAG, "Error deleting status file", e)
         }
         return deleted
+    }
+
+    /**
+     * Menyimpan nama teman kustom untuk file status tertentu.
+     */
+    fun saveCustomStatusName(context: Context, statusName: String, customName: String) {
+        try {
+            val prefs = context.getSharedPreferences("notirecover_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putString("status_friend_$statusName", customName.trim()).apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal menyimpan nama kustom status", e)
+        }
+    }
+
+    /**
+     * Mengambil nama teman kustom untuk file status tertentu jika pernah disimpan.
+     */
+    fun getCustomStatusName(context: Context, statusName: String): String? {
+        return try {
+            val prefs = context.getSharedPreferences("notirecover_prefs", Context.MODE_PRIVATE)
+            val name = prefs.getString("status_friend_$statusName", null)
+            if (!name.isNullOrBlank()) name else null
+        } catch (e: Exception) {
+            null
+        }
     }
 }

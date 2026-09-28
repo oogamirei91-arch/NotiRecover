@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -419,10 +420,16 @@ fun StatusSaverScreen() {
                                         }
                                     },
                                     onSaveClick = {
-                                        val success = StatusSaverHelper.saveStatusToGallery(context, item)
+                                        val customName = StatusSaverHelper.getCustomStatusName(context, item.name)
+                                        val success = StatusSaverHelper.saveStatusToGallery(context, item, customName)
                                         if (success) {
                                             refreshStatuses()
-                                            Toast.makeText(context, "Berhasil disimpan ke Galeri HP! 🎉", Toast.LENGTH_SHORT).show()
+                                            val msg = if (!customName.isNullOrBlank()) {
+                                                "Berhasil disimpan sebagai Status $customName di Galeri! 🎉"
+                                            } else {
+                                                "Berhasil disimpan ke Galeri HP! 🎉"
+                                            }
+                                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                         } else {
                                             Toast.makeText(context, "Gagal menyimpan file", Toast.LENGTH_SHORT).show()
                                         }
@@ -514,11 +521,16 @@ fun StatusSaverScreen() {
                 statusItem = item,
                 isDownloaded = isDownloadedItem,
                 onDismiss = { selectedStatusForPreview = null },
-                onSave = {
-                    val success = StatusSaverHelper.saveStatusToGallery(context, item)
+                onSave = { customName ->
+                    val success = StatusSaverHelper.saveStatusToGallery(context, item, customName)
                     if (success) {
                         refreshStatuses()
-                        Toast.makeText(context, "Berhasil disimpan ke Galeri HP! 🎉", Toast.LENGTH_SHORT).show()
+                        val msg = if (!customName.isNullOrBlank()) {
+                            "Berhasil disimpan sebagai Status $customName di Galeri! 🎉"
+                        } else {
+                            "Berhasil disimpan ke Galeri HP! 🎉"
+                        }
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(context, "Gagal menyimpan file", Toast.LENGTH_SHORT).show()
                     }
@@ -738,6 +750,28 @@ fun StatusGridCard(
                 }
             }
 
+            // Badge Nama Teman (Jika sudah dinamai) di Pojok Kiri Bawah
+            val customFriendName = remember(statusItem.name) {
+                StatusSaverHelper.getCustomStatusName(context, statusItem.name)
+            }
+            if (!customFriendName.isNullOrBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(topEnd = 8.dp, bottomStart = 12.dp),
+                    color = Color.Black.copy(alpha = 0.7f),
+                    modifier = Modifier.align(Alignment.BottomStart)
+                ) {
+                    Text(
+                        text = "👤 $customFriendName",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
             // Mode Seleksi: Tampilkan Checklist
             if (isSelectionMode) {
                 Surface(
@@ -823,10 +857,16 @@ fun StatusPreviewDialog(
     statusItem: StatusMediaItem,
     isDownloaded: Boolean = false,
     onDismiss: () -> Unit,
-    onSave: () -> Unit = {},
+    onSave: (customName: String?) -> Unit = {},
     onDelete: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    var friendName by remember(statusItem.name) {
+        mutableStateOf(StatusSaverHelper.getCustomStatusName(context, statusItem.name) ?: "")
+    }
+    var isEditingName by remember { mutableStateOf(false) }
+    var tempName by remember(friendName) { mutableStateOf(friendName) }
+
     val bitmap = remember(statusItem.uri) {
         if (!statusItem.isVideo) {
             try {
@@ -880,32 +920,86 @@ fun StatusPreviewDialog(
 
                         Spacer(modifier = Modifier.width(10.dp))
 
-                        Column {
-                            Text(
-                                text = if (statusItem.isVideo) "Video Status Teman" else "Foto Status Teman",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = Color(0xFFDCFCE7)
+                        Column(modifier = Modifier.weight(1f)) {
+                            if (isEditingName) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    OutlinedTextField(
+                                        value = tempName,
+                                        onValueChange = { tempName = it },
+                                        placeholder = { Text("Nama teman...", fontSize = 12.sp) },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                        textStyle = androidx.compose.ui.text.TextStyle(
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    IconButton(
+                                        onClick = {
+                                            StatusSaverHelper.saveCustomStatusName(context, statusItem.name, tempName)
+                                            friendName = tempName.trim()
+                                            isEditingName = false
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(Icons.Default.Check, contentDescription = "Simpan Nama", tint = Color(0xFF16A34A))
+                                    }
+                                    IconButton(
+                                        onClick = { isEditingName = false },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Batal", tint = Color.Gray)
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            tempName = friendName
+                                            isEditingName = true
+                                        }
                                 ) {
                                     Text(
-                                        text = statusItem.sourceApp,
-                                        color = Color(0xFF166534),
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 10.sp,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                        text = if (friendName.isNotBlank()) "Status $friendName" else (if (statusItem.isVideo) "Video Status" else "Foto Status"),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Beri Nama Teman",
+                                        tint = PrimaryBlue,
+                                        modifier = Modifier.size(15.dp)
                                     )
                                 }
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (isDownloaded) "Tersimpan" else "Incognito",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF0284C7),
-                                    fontWeight = FontWeight.Medium
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0xFFDCFCE7)
+                                    ) {
+                                        Text(
+                                            text = statusItem.sourceApp,
+                                            color = Color(0xFF166534),
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = statusItem.formattedDate,
+                                        fontSize = 11.sp,
+                                        color = TextSecondaryLight
+                                    )
+                                }
                             }
                         }
                     }
@@ -984,6 +1078,41 @@ fun StatusPreviewDialog(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Bar Cepat Beri Nama Teman
+                if (!isEditingName) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFF1F5F9),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                tempName = friendName
+                                isEditingName = true
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = PrimaryBlue,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (friendName.isNotBlank()) "Nama Teman: $friendName (Klik untuk ubah)" else "✏️ Beri Nama Teman untuk Status Ini",
+                                fontSize = 11.sp,
+                                color = if (friendName.isNotBlank()) PrimaryBlue else TextSecondaryLight,
+                                fontWeight = if (friendName.isNotBlank()) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Tombol Aksi
@@ -1016,7 +1145,7 @@ fun StatusPreviewDialog(
                     if (!isDownloaded) {
                         Button(
                             onClick = {
-                                onSave()
+                                onSave(friendName.ifBlank { null })
                                 onDismiss()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
