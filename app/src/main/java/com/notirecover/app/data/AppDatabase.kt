@@ -5,20 +5,24 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.notirecover.app.data.dao.ChatDao
+import com.notirecover.app.data.dao.DirectContactDao
 import com.notirecover.app.data.model.ConversationEntity
+import com.notirecover.app.data.model.DirectContactEntity
 import com.notirecover.app.data.model.MessageEntity
 
 @Database(
     entities = [
         ConversationEntity::class,
-        MessageEntity::class
+        MessageEntity::class,
+        DirectContactEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun chatDao(): ChatDao
+    abstract fun directContactDao(): DirectContactDao
 
     companion object {
         @Volatile

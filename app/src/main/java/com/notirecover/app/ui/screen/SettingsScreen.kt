@@ -27,6 +27,7 @@ import com.notirecover.app.data.preference.AppPreferences
 import com.notirecover.app.ui.dialog.ProPaywallDialog
 import com.notirecover.app.ui.theme.PrimaryBlue
 import com.notirecover.app.ui.theme.TextSecondaryLight
+import com.notirecover.app.util.BackupHelper
 import com.notirecover.app.util.LanguageHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,6 +54,8 @@ fun SettingsScreen(
     var showKeywordsDialog by remember { mutableStateOf(false) }
     var newPinInput by remember { mutableStateOf(prefs.appLockPin) }
     var tempKeywordsInput by remember { mutableStateOf(prefs.smartAlertKeywords) }
+    var backupInfo by remember { mutableStateOf(BackupHelper.getBackupStatusInfo()) }
+    var showRestoreConfirmDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -357,6 +360,76 @@ fun SettingsScreen(
             }
 
             // ==========================================
+            // KARTU 6: CADANGAN & PEMULIHAN (BACKUP & RESTORE)
+            // ==========================================
+            Text(
+                text = "Cadangan & Pemulihan Data",
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = PrimaryBlue
+            )
+
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 1.dp
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                val success = BackupHelper.backupDatabase(context)
+                                if (success) {
+                                    backupInfo = BackupHelper.getBackupStatusInfo()
+                                    Toast.makeText(context, "Cadangan berhasil disimpan ke folder Documents!", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, "Gagal mencadangkan. Periksa izin akses penyimpanan.", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.CloudUpload, contentDescription = null, tint = PrimaryBlue, modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Cadangkan Database Sekarang", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(
+                                text = backupInfo ?: "Simpan cadangan ke folder Dokumen HP agar tidak hilang saat uninstall",
+                                fontSize = 11.sp,
+                                color = TextSecondaryLight
+                            )
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 14.dp), color = Color(0xFFF1F5F9))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showRestoreConfirmDialog = true
+                            }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(24.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Pulihkan Database dari Cadangan", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(
+                                text = "Muat riwayat chat & kontak dari file cadangan di memori HP",
+                                fontSize = 11.sp,
+                                color = TextSecondaryLight
+                            )
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
+                    }
+                }
+            }
+
+            // ==========================================
             // KARTU INFORMASI & PRIVASI
             // ==========================================
             Text(
@@ -478,6 +551,38 @@ fun SettingsScreen(
                 },
                 dismissButton = {
                     OutlinedButton(onClick = { showKeywordsDialog = false }) {
+                        Text("Batal")
+                    }
+                }
+            )
+        }
+
+        // Dialog Konfirmasi Pemulihan Database
+        if (showRestoreConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showRestoreConfirmDialog = false },
+                title = { Text("Pulihkan Database?", fontWeight = FontWeight.Bold) },
+                text = {
+                    Text("Database internal akan ditimpa dengan riwayat dari file cadangan terakhir di folder Documents/ChatRestore. Apakah Anda ingin melanjutkan?")
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showRestoreConfirmDialog = false
+                            val success = BackupHelper.restoreDatabase(context)
+                            if (success) {
+                                backupInfo = BackupHelper.getBackupStatusInfo()
+                                Toast.makeText(context, "Database berhasil dipulihkan! Buka ulang aplikasi agar data termuat sempurna.", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, "File cadangan tidak ditemukan di folder Documents/ChatRestore/backup/.", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    ) {
+                        Text("Pulihkan")
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showRestoreConfirmDialog = false }) {
                         Text("Batal")
                     }
                 }
