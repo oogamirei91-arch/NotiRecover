@@ -52,6 +52,16 @@ fun WebScreen() {
         webViewInstance?.loadUrl(targetUrl)
     }
 
+    // Jeda eksekusi JavaScript & timer WebView saat pengguna berpindah tab untuk hemat baterai
+    DisposableEffect(Unit) {
+        webViewInstance?.onResume()
+        webViewInstance?.resumeTimers()
+        onDispose {
+            webViewInstance?.onPause()
+            webViewInstance?.pauseTimers()
+        }
+    }
+
     val downloadStatusJs = """
         (function() {
             try {

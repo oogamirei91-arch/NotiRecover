@@ -160,7 +160,10 @@ fun MediaGridItem(
     val bitmap = remember(message.mediaUri) {
         message.mediaUri?.let { path ->
             val file = File(path)
-            if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
+            if (file.exists()) {
+                val options = BitmapFactory.Options().apply { inSampleSize = 2 }
+                BitmapFactory.decodeFile(file.absolutePath, options)
+            } else null
         }
     }
 

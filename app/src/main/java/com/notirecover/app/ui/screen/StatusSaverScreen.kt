@@ -93,11 +93,6 @@ fun StatusSaverScreen() {
         }
     }
 
-    DisposableEffect(Unit) {
-        refreshStatuses()
-        onDispose { }
-    }
-
     LaunchedEffect(Unit) {
         refreshStatuses()
     }
@@ -663,7 +658,10 @@ fun StatusGridCard(
                 } else {
                     context.contentResolver.openInputStream(statusItem.uri)
                 }
-                inputStream?.use { BitmapFactory.decodeStream(it) }
+                val options = BitmapFactory.Options().apply {
+                    inSampleSize = 2 // Downsample untuk grid thumbnail (menghemat CPU & RAM)
+                }
+                inputStream?.use { BitmapFactory.decodeStream(it, null, options) }
             } catch (e: Exception) {
                 null
             }
