@@ -126,7 +126,7 @@ class ChatNotificationListenerService : NotificationListenerService() {
 
                 // senderName adalah orang yang mengirim pesan di dalam grup
                 senderName = latestMsg?.person?.name?.toString()?.trim()
-                    ?: latestMsg?.senderPerson?.name?.toString()?.trim()
+                    ?: latestMsg?.sender?.toString()?.trim()
                     ?: if (rawTitle.contains(" @ ")) rawTitle.substringBefore(" @ ").trim() else rawTitle
 
                 messageText = latestMsg?.text?.toString()?.trim()

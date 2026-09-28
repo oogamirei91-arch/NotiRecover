@@ -87,14 +87,14 @@ fun HomeScreen(
                     actions = {
                         // Tombol Pilih Semua / Batal Pilih Semua
                         IconButton(onClick = {
-                            selectedConversations = if (selectedConversations.size == filteredList.size) {
+                            selectedConversations = if (selectedConversations.size == conversations.size) {
                                 emptySet()
                             } else {
-                                filteredList.toSet()
+                                conversations.toSet()
                             }
                         }) {
                             Icon(
-                                imageVector = if (selectedConversations.size == filteredList.size && filteredList.isNotEmpty())
+                                imageVector = if (selectedConversations.size == conversations.size && conversations.isNotEmpty())
                                     Icons.Default.Deselect
                                 else
                                     Icons.Default.SelectAll,
