@@ -41,6 +41,41 @@ class ChatNotificationListenerService : NotificationListenerService() {
             "com.facebook.orca",             // Messenger
             "jp.naver.line.android"          // LINE
         )
+
+        /**
+         * Membersihkan dan menggabungkan percakapan bertumpuk (seperti "suka cucur (2messages)")
+         * ke percakapan utama ("suka cucur") agar riwayat chat tidak terpisah menjadi dua entitas.
+         */
+        suspend fun cleanupDuplicateStackedConversations(chatDao: com.notirecover.app.data.dao.ChatDao) {
+            try {
+                val conversations = chatDao.getAllConversationsList()
+                for (conv in conversations) {
+                    val cleanTitle = DeletedMessageClassifier.cleanChatTitle(conv.chatTitle)
+                    if (conv.chatTitle != cleanTitle) {
+                        val mainConv = conversations.find {
+                            it.packageName == conv.packageName &&
+                            it.id != conv.id &&
+                            (it.chatTitle.trim().equals(cleanTitle, ignoreCase = true) ||
+                             DeletedMessageClassifier.cleanChatTitle(it.chatTitle).equals(cleanTitle, ignoreCase = true))
+                        }
+
+                        if (mainConv != null && mainConv.id != conv.id) {
+                            chatDao.mergeConversations(
+                                sourceId = conv.id,
+                                targetId = mainConv.id,
+                                addDeleted = conv.deletedCount
+                            )
+                            Log.i(TAG, "Berhasil menggabungkan chat bertumpuk '${conv.chatTitle}' ke '${mainConv.chatTitle}'")
+                        } else {
+                            chatDao.updateChatTitle(conv.id, cleanTitle)
+                            Log.i(TAG, "Membersihkan judul chat bertumpuk '${conv.chatTitle}' menjadi '$cleanTitle'")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Gagal membersihkan percakapan bertumpuk", e)
+            }
+        }
     }
 
     override fun onCreate() {
@@ -105,7 +140,8 @@ class ChatNotificationListenerService : NotificationListenerService() {
      */
     private fun parseNotification(notification: Notification, extras: Bundle): ParsedChatNotification? {
         val messagingStyle = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
-        val conversationTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()?.trim()
+        val rawConvTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()?.trim()
+        val conversationTitle = if (!rawConvTitle.isNullOrBlank()) DeletedMessageClassifier.cleanChatTitle(rawConvTitle) else null
         val rawTitle = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
         val isGroupExtra = extras.getBoolean(Notification.EXTRA_IS_GROUP_CONVERSATION, false)
 
@@ -120,19 +156,26 @@ class ChatNotificationListenerService : NotificationListenerService() {
 
             if (isGroup) {
                 // Dalam chat grup: conversationTitle adalah NAMA GRUP
+                val rawGroupFromTitle = if (rawTitle.contains(" @ ")) {
+                    rawTitle.substringAfter(" @ ").trim()
+                } else {
+                    rawTitle
+                }
+
                 chatTitle = conversationTitle
-                    ?: messagingStyle.conversationTitle?.toString()?.trim()
-                    ?: if (rawTitle.contains(" @ ")) rawTitle.substringAfter(" @ ").trim() else rawTitle
+                    ?: messagingStyle.conversationTitle?.toString()?.trim()?.let { DeletedMessageClassifier.cleanChatTitle(it) }
+                    ?: DeletedMessageClassifier.cleanChatTitle(rawGroupFromTitle)
 
                 // senderName adalah orang yang mengirim pesan di dalam grup
                 senderName = latestMsg?.person?.name?.toString()?.trim()
                     ?: latestMsg?.sender?.toString()?.trim()
-                    ?: if (rawTitle.contains(" @ ")) rawTitle.substringBefore(" @ ").trim() else rawTitle
+                    ?: if (rawTitle.contains(" @ ")) rawTitle.substringBefore(" @ ").trim() else ""
 
                 messageText = latestMsg?.text?.toString()?.trim()
             } else {
                 // Chat pribadi (1-on-1)
-                chatTitle = rawTitle.ifBlank { latestMsg?.person?.name?.toString()?.trim().orEmpty() }
+                val raw1on1 = rawTitle.ifBlank { latestMsg?.person?.name?.toString()?.trim().orEmpty() }
+                chatTitle = DeletedMessageClassifier.cleanChatTitle(raw1on1)
                 senderName = chatTitle
                 messageText = latestMsg?.text?.toString()?.trim()
             }
@@ -142,19 +185,23 @@ class ChatNotificationListenerService : NotificationListenerService() {
         if (chatTitle.isBlank()) {
             if (!conversationTitle.isNullOrBlank()) {
                 isGroup = true
-                chatTitle = conversationTitle
-                senderName = rawTitle.ifBlank { conversationTitle }
+                chatTitle = DeletedMessageClassifier.cleanChatTitle(conversationTitle)
+                senderName = if (rawTitle.isNotBlank() && rawTitle != conversationTitle) {
+                    DeletedMessageClassifier.cleanChatTitle(rawTitle)
+                } else {
+                    chatTitle
+                }
             } else if (rawTitle.contains(" @ ")) {
                 isGroup = true
                 senderName = rawTitle.substringBefore(" @ ").trim()
-                chatTitle = rawTitle.substringAfter(" @ ").trim()
+                chatTitle = DeletedMessageClassifier.cleanChatTitle(rawTitle.substringAfter(" @ ").trim())
             } else if (rawTitle.contains(":") && isGroupExtra) {
                 isGroup = true
-                chatTitle = rawTitle.substringBefore(":").trim()
+                chatTitle = DeletedMessageClassifier.cleanChatTitle(rawTitle.substringBefore(":").trim())
                 senderName = rawTitle.substringAfter(":").trim()
             } else {
-                chatTitle = rawTitle
-                senderName = rawTitle
+                chatTitle = DeletedMessageClassifier.cleanChatTitle(rawTitle)
+                senderName = chatTitle
             }
         }
 
@@ -177,8 +224,13 @@ class ChatNotificationListenerService : NotificationListenerService() {
             }
         }
 
+        chatTitle = DeletedMessageClassifier.cleanChatTitle(chatTitle)
         if (chatTitle.isBlank()) return null
-        if (senderName.isBlank()) senderName = chatTitle
+        if (senderName.isBlank() || senderName == chatTitle) {
+            senderName = chatTitle
+        } else {
+            senderName = DeletedMessageClassifier.cleanChatTitle(senderName)
+        }
 
         return ParsedChatNotification(
             chatTitle = chatTitle,
@@ -197,18 +249,30 @@ class ChatNotificationListenerService : NotificationListenerService() {
         savedMediaPath: String?
     ) {
         val chatDao = database.chatDao()
+        val cleanTitle = DeletedMessageClassifier.cleanChatTitle(chatTitle)
 
         // 1. Cari atau buat percakapan (Grup memiliki 1 entitas chat tersendiri di database)
-        var conversation = chatDao.getConversation(packageName, chatTitle)
+        var conversation = chatDao.getConversation(packageName, cleanTitle)
         if (conversation == null) {
-            val newConversation = ConversationEntity(
-                packageName = packageName,
-                chatTitle = chatTitle,
-                lastMessage = if (isGroup && senderName != chatTitle) "$senderName: $messageText" else messageText,
-                updatedAt = System.currentTimeMillis()
-            )
-            val newId = chatDao.insertConversation(newConversation)
-            conversation = newConversation.copy(id = newId)
+            // Cek apakah ada percakapan lama yang namanya belum dibersihkan (cth: "suka cucur (2messages)")
+            val allConvs = chatDao.getAllConversationsList()
+            val existingDirty = allConvs.find {
+                it.packageName == packageName &&
+                DeletedMessageClassifier.cleanChatTitle(it.chatTitle).equals(cleanTitle, ignoreCase = true)
+            }
+            if (existingDirty != null) {
+                chatDao.updateChatTitle(existingDirty.id, cleanTitle)
+                conversation = existingDirty.copy(chatTitle = cleanTitle)
+            } else {
+                val newConversation = ConversationEntity(
+                    packageName = packageName,
+                    chatTitle = cleanTitle,
+                    lastMessage = if (isGroup && senderName != cleanTitle) "$senderName: $messageText" else messageText,
+                    updatedAt = System.currentTimeMillis()
+                )
+                val newId = chatDao.insertConversation(newConversation)
+                conversation = newConversation.copy(id = newId)
+            }
         }
 
         val conversationId = conversation.id

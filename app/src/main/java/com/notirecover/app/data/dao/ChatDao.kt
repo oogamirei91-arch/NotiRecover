@@ -26,17 +26,38 @@ interface ChatDao {
     @Query("SELECT * FROM conversations WHERE packageName = :packageName AND chatTitle = :chatTitle LIMIT 1")
     suspend fun getConversation(packageName: String, chatTitle: String): ConversationEntity?
 
+    @Query("SELECT * FROM conversations")
+    suspend fun getAllConversationsList(): List<ConversationEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertConversation(conversation: ConversationEntity): Long
 
     @Update
     suspend fun updateConversation(conversation: ConversationEntity)
 
+    @Query("UPDATE conversations SET chatTitle = :newTitle WHERE id = :conversationId")
+    suspend fun updateChatTitle(conversationId: Long, newTitle: String)
+
+    @Query("UPDATE conversations SET deletedCount = deletedCount + :count WHERE id = :conversationId")
+    suspend fun addDeletedCount(conversationId: Long, count: Int)
+
     @Query("UPDATE conversations SET deletedCount = deletedCount + 1, updatedAt = :updatedAt WHERE id = :conversationId")
     suspend fun incrementDeletedCount(conversationId: Long, updatedAt: Long = System.currentTimeMillis())
 
     @Query("UPDATE conversations SET lastMessage = :lastMessage, updatedAt = :updatedAt WHERE id = :conversationId")
     suspend fun updateLastMessage(conversationId: Long, lastMessage: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE messages SET conversationId = :targetConversationId WHERE conversationId = :sourceConversationId")
+    suspend fun reassignMessages(sourceConversationId: Long, targetConversationId: Long)
+
+    @Transaction
+    suspend fun mergeConversations(sourceId: Long, targetId: Long, addDeleted: Int) {
+        reassignMessages(sourceId, targetId)
+        deleteConversationOnly(sourceId)
+        if (addDeleted > 0) {
+            addDeletedCount(targetId, addDeleted)
+        }
+    }
 
     // ==========================================
     // Pesan & Media (Messages & Media)

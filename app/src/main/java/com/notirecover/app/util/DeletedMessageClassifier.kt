@@ -39,6 +39,42 @@ object DeletedMessageClassifier {
     }
 
     /**
+     * Membersihkan judul chat dari indikator counter jumlah pesan WhatsApp / Telegram yang menumpuk,
+     * seperti: "suka cucur (2 messages)", "suka cucur (2messages)", "suka cucur (2 pesan)", "(2) suka cucur", dll.
+     */
+    fun cleanChatTitle(title: String?): String {
+        if (title.isNullOrBlank()) return ""
+        var cleaned = title.trim()
+
+        // 1. Bersihkan akhiran counter dalam kurung, cth:
+        // "suka cucur (2 messages)", "suka cucur (2messages)", "suka cucur (2 pesan)", "suka cucur (2pesan)", "suka cucur (2)"
+        cleaned = cleaned.replace(
+            Regex("""\s*\(\s*\d+\s*(?:messages?|pesan|pesan baru|new messages?|unread messages?|unread|msgs?|[a-zA-Z]+)?\s*\)\s*$""", RegexOption.IGNORE_CASE),
+            ""
+        )
+
+        // 2. Bersihkan awalan counter dalam kurung, cth: "(2) suka cucur", "(2 pesan) suka cucur"
+        cleaned = cleaned.replace(
+            Regex("""^\s*\(\s*\d+\s*(?:messages?|pesan|pesan baru|new messages?|unread messages?|unread|msgs?)?\s*\)\s*""", RegexOption.IGNORE_CASE),
+            ""
+        )
+
+        // 3. Bersihkan format "2 new messages from suka cucur" / "2 pesan dari suka cucur"
+        cleaned = cleaned.replace(
+            Regex("""^\s*\d+\s*(?:new messages?|pesan baru|unread messages?|messages?|pesan)\s+(?:from|dari)\s+""", RegexOption.IGNORE_CASE),
+            ""
+        )
+
+        // 4. Bersihkan akhiran titik dua counter, cth: "suka cucur: 2 new messages", "suka cucur: 2 pesan"
+        cleaned = cleaned.replace(
+            Regex(""":\s*\d+\s*(?:new messages?|pesan baru|unread messages?|messages?|pesan)\s*$""", RegexOption.IGNORE_CASE),
+            ""
+        )
+
+        return cleaned.trim().ifEmpty { title.trim() }
+    }
+
+    /**
      * Memeriksa apakah notifikasi adalah notifikasi sistem internal medsos yang perlu diabaikan
      * (misal: "Memeriksa pesan baru...", "WhatsApp Web aktif", backup status).
      */
@@ -77,11 +113,12 @@ object DeletedMessageClassifier {
         val cleanText = text.trim().lowercase()
         val cleanTitle = title.orEmpty().trim().lowercase()
 
-        // 1. Abaikan notifikasi ringkasan / counter pesan (misal: "3 new messages", "2 pesan baru")
+        // 1. Abaikan notifikasi ringkasan / counter pesan (misal: "3 new messages", "2 pesan baru", "2messages", "2 pesan")
         val summaryRegexes = listOf(
-            Regex("""^\d+\s+(new messages?|pesan baru|unread messages?|pesan belum dibaca|messages?|pesan)$""", RegexOption.IGNORE_CASE),
+            Regex("""^\(?\d+\s*(?:new messages?|pesan baru|unread messages?|pesan belum dibaca|messages?|pesan|msgs?)\)?$""", RegexOption.IGNORE_CASE),
             Regex("""^(new messages?|pesan baru|unread messages?|pesan belum dibaca)$""", RegexOption.IGNORE_CASE),
-            Regex("""^\d+\s+(pesan dari|messages from)\s+\d+\s+(obrolan|chats?)$""", RegexOption.IGNORE_CASE)
+            Regex("""^\d+\s*(?:pesan dari|messages from)\s+\d+\s*(?:obrolan|chats?)$""", RegexOption.IGNORE_CASE),
+            Regex("""^\d+\s*(?:pesan|messages?)\s+(?:dari|from)\s+.*$""", RegexOption.IGNORE_CASE)
         )
         if (summaryRegexes.any { it.matches(cleanText) }) {
             return true

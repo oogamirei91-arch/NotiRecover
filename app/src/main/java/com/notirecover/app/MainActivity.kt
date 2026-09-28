@@ -30,6 +30,7 @@ import com.notirecover.app.util.BackupHelper
 import com.notirecover.app.util.LanguageHelper
 import com.notirecover.app.util.PermissionHelper
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -45,6 +46,11 @@ class MainActivity : FragmentActivity() {
         val app = application as NotiRecoverApp
         val database = app.database
         prefs = AppPreferences(this)
+
+        // Otomatis gabungkan dan bersihkan percakapan bertumpuk (seperti "suka cucur (2messages)") ke percakapan utama
+        lifecycleScope.launch(Dispatchers.IO) {
+            com.notirecover.app.service.ChatNotificationListenerService.cleanupDuplicateStackedConversations(database.chatDao())
+        }
 
         setContent {
             var isSplashLoading by remember { mutableStateOf(true) }
