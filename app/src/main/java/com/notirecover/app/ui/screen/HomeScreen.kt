@@ -52,6 +52,19 @@ fun HomeScreen(
     var selectedConversations by remember { mutableStateOf<Set<ConversationEntity>>(emptySet()) }
     var showBulkDeleteDialog by remember { mutableStateOf(false) }
 
+    // Pemisah sosmed (WhatsApp, Instagram, Telegram - Tanpa "Semua")
+    var selectedPlatform by remember { mutableStateOf("whatsapp") }
+    val waList = remember(conversations) { conversations.filter { it.packageName.contains("whatsapp") } }
+    val igList = remember(conversations) { conversations.filter { it.packageName.contains("instagram") } }
+    val tgList = remember(conversations) { conversations.filter { it.packageName.contains("telegram") } }
+
+    val currentList = when (selectedPlatform) {
+        "whatsapp" -> waList
+        "instagram" -> igList
+        "telegram" -> tgList
+        else -> waList
+    }
+
     // Clean up selected items that no longer exist
     LaunchedEffect(conversations) {
         selectedConversations = selectedConversations.filter { sel -> conversations.any { it.id == sel.id } }.toSet()
@@ -87,14 +100,14 @@ fun HomeScreen(
                     actions = {
                         // Tombol Pilih Semua / Batal Pilih Semua
                         IconButton(onClick = {
-                            selectedConversations = if (selectedConversations.size == conversations.size) {
+                            selectedConversations = if (selectedConversations.size == currentList.size) {
                                 emptySet()
                             } else {
-                                conversations.toSet()
+                                currentList.toSet()
                             }
                         }) {
                             Icon(
-                                imageVector = if (selectedConversations.size == conversations.size && conversations.isNotEmpty())
+                                imageVector = if (selectedConversations.size == currentList.size && currentList.isNotEmpty())
                                     Icons.Default.Deselect
                                 else
                                     Icons.Default.SelectAll,
@@ -137,21 +150,32 @@ fun HomeScreen(
                             }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "ChatRestore",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 19.sp
+                                    )
+                                    if (isServiceEnabled) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .background(Color(0xFF22C55E), CircleShape)
+                                        )
+                                    }
+                                }
                                 Text(
-                                    text = "ChatRestore",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 19.sp
-                                )
-                                Text(
-                                    text = LanguageHelper.get("app_subtitle", currentLanguage),
+                                    text = if (isServiceEnabled) (if (currentLanguage == "ID") "Monitoring Aktif" else "Monitoring Active") else LanguageHelper.get("app_subtitle", currentLanguage),
                                     fontSize = 11.sp,
-                                    color = TextSecondaryLight
+                                    color = if (isServiceEnabled) Color(0xFF16A34A) else TextSecondaryLight,
+                                    fontWeight = if (isServiceEnabled) FontWeight.Medium else FontWeight.Normal
                                 )
                             }
                         }
                     },
                     actions = {
-                        if (conversations.isNotEmpty()) {
+                        if (currentList.isNotEmpty()) {
                             IconButton(onClick = { isSelectionMode = true }) {
                                 Icon(
                                     imageVector = Icons.Default.Checklist,
@@ -191,11 +215,28 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Banner Status Service
-            ServiceStatusBanner(
-                isEnabled = isServiceEnabled,
-                currentLanguage = currentLanguage,
-                onEnableClick = onEnableServiceClick
+            // Banner Status Service (Hanya jika izin belum aktif agar pengguna bisa mengaktifkan)
+            if (!isServiceEnabled) {
+                ServiceStatusBanner(
+                    isEnabled = false,
+                    currentLanguage = currentLanguage,
+                    onEnableClick = onEnableServiceClick
+                )
+            }
+
+            // Tab Pemisah Sosmed (WhatsApp, Instagram, Telegram) - Tanpa "Semua"
+            SocialMediaTabs(
+                selectedPlatform = selectedPlatform,
+                waCount = waList.size,
+                igCount = igList.size,
+                tgCount = tgList.size,
+                onSelectPlatform = { platform ->
+                    selectedPlatform = platform
+                    if (isSelectionMode) {
+                        selectedConversations = emptySet()
+                        isSelectionMode = false
+                    }
+                }
             )
 
             // Konten Utama
@@ -205,13 +246,18 @@ fun HomeScreen(
                     currentLanguage = currentLanguage,
                     onEnableClick = onEnableServiceClick
                 )
+            } else if (currentList.isEmpty()) {
+                PlatformEmptyStateView(
+                    platform = selectedPlatform,
+                    currentLanguage = currentLanguage
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(conversations, key = { it.id }) { conversation ->
+                    items(currentList, key = { it.id }) { conversation ->
                         val isSelected = selectedConversations.contains(conversation)
                         ConversationCard(
                             conversation = conversation,
@@ -290,6 +336,149 @@ fun HomeScreen(
                         Text("Batal")
                     }
                 }
+            )
+        }
+    }
+}
+
+@Composable
+fun SocialMediaTabs(
+    selectedPlatform: String,
+    waCount: Int,
+    igCount: Int,
+    tgCount: Int,
+    onSelectPlatform: (String) -> Unit
+) {
+    val platforms = listOf(
+        Triple("whatsapp", "WhatsApp", Color(0xFF25D366)),
+        Triple("instagram", "Instagram", Color(0xFFE1306C)),
+        Triple("telegram", "Telegram", Color(0xFF0088CC))
+    )
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        color = Color(0xFFF1F5F9),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            platforms.forEach { (key, title, color) ->
+                val isSelected = selectedPlatform == key
+                val count = when (key) {
+                    "whatsapp" -> waCount
+                    "instagram" -> igCount
+                    "telegram" -> tgCount
+                    else -> 0
+                }
+
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onSelectPlatform(key) },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                    shadowElevation = if (isSelected) 2.dp else 0.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 9.dp, horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(color, CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = title,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) MaterialTheme.colorScheme.onSurface else TextSecondaryLight,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (count > 0) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isSelected) color.copy(alpha = 0.15f) else Color(0xFFE2E8F0)
+                            ) {
+                                Text(
+                                    text = count.toString(),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) color else TextSecondaryLight,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PlatformEmptyStateView(
+    platform: String,
+    currentLanguage: String = "ID"
+) {
+    val isId = currentLanguage == "ID"
+    val (name, color) = when (platform) {
+        "whatsapp" -> "WhatsApp" to Color(0xFF25D366)
+        "instagram" -> "Instagram" to Color(0xFFE1306C)
+        "telegram" -> "Telegram" to Color(0xFF0088CC)
+        else -> "Chat" to PrimaryBlue
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = color.copy(alpha = 0.12f),
+                modifier = Modifier.size(64.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.ChatBubbleOutline,
+                        contentDescription = null,
+                        tint = color,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = if (isId) "Belum Ada Chat $name" else "No $name Chats Yet",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = if (isId) 
+                    "Pesan & foto yang masuk dari $name akan otomatis tercatat dan tersimpan di sini." 
+                else 
+                    "Incoming messages & photos from $name will be automatically captured here.",
+                fontSize = 13.sp,
+                color = TextSecondaryLight,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
     }
