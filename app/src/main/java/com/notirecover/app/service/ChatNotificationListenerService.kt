@@ -98,21 +98,40 @@ class ChatNotificationListenerService : NotificationListenerService() {
             return
         }
 
+        // 2. Abaikan notifikasi Ongoing / Foreground Service / Progress Pengiriman File (misal "File terkirim")
+        if (sbn.isOngoing ||
+            (notification.flags and Notification.FLAG_ONGOING_EVENT) != 0 ||
+            (notification.flags and Notification.FLAG_FOREGROUND_SERVICE) != 0 ||
+            notification.category == Notification.CATEGORY_PROGRESS ||
+            notification.category == Notification.CATEGORY_SERVICE
+        ) {
+            Log.d(TAG, "Mengabaikan notifikasi ongoing/progress/service dari $packageName")
+            return
+        }
+
         val extras = notification.extras ?: return
 
-        // 2. Ekstrak data chat terstruktur (memisahkan nama grup & nama pengirim asli)
+        // Abaikan notifikasi transfer progress bar
+        if (extras.containsKey(Notification.EXTRA_PROGRESS) ||
+            extras.containsKey(Notification.EXTRA_PROGRESS_MAX)
+        ) {
+            Log.d(TAG, "Mengabaikan notifikasi progress transfer dari $packageName")
+            return
+        }
+
+        // 3. Ekstrak data chat terstruktur (memisahkan nama grup & nama pengirim asli)
         val parsed = parseNotification(notification, extras) ?: return
 
-        // 3. Abaikan notifikasi sistem internal
+        // 4. Abaikan notifikasi sistem internal
         if (DeletedMessageClassifier.isSystemNotification(parsed.chatTitle, parsed.messageText)) {
             Log.d(TAG, "Mengabaikan notifikasi sistem: ${parsed.chatTitle} - ${parsed.messageText}")
             return
         }
 
-        // 4. Ekstrak foto dari notifikasi dengan anti-duplikasi MD5
+        // 5. Ekstrak foto dari notifikasi dengan anti-duplikasi MD5
         val savedMediaPath = MediaHelper.saveNotificationMedia(applicationContext, notification)
 
-        // 5. Abaikan placeholder "sent a photo" / summary jika tidak ada foto baru
+        // 6. Abaikan placeholder "sent a photo" / summary jika tidak ada foto baru
         if (DeletedMessageClassifier.isPlaceholderOrSummary(parsed.chatTitle, parsed.messageText, savedMediaPath != null)) {
             if (savedMediaPath == null) {
                 Log.d(TAG, "Mengabaikan teks placeholder / counter: '${parsed.messageText}' dari '${parsed.chatTitle}'")
@@ -292,15 +311,44 @@ class ChatNotificationListenerService : NotificationListenerService() {
                 )
             }
         } else {
-            // 3. Pencegahan Duplikasi Media & Pesan Berulang
+            // 3. Pencegahan Duplikasi Media & Pesan Berulang (Link Preview TikTok/YouTube, Multi-Event WhatsApp, dsb)
             var finalMediaPath = savedMediaPath
+
+            val cleanText = if (finalMediaPath != null && (messageText.isBlank() || messageText.lowercase().contains("sent a photo") || messageText.lowercase().contains("mengirim foto"))) {
+                "📷 [Foto]"
+            } else {
+                messageText
+            }
+
+            // Cek apakah pesan dengan teks & pengirim yang sama persis sudah masuk dalam 25 detik terakhir
+            if (cleanText.isNotBlank()) {
+                val recentMatch = chatDao.getRecentMatchingMessage(
+                    conversationId = conversationId,
+                    senderName = senderName,
+                    messageText = cleanText,
+                    sinceTime = System.currentTimeMillis() - 25000L
+                )
+
+                if (recentMatch != null) {
+                    // Kasus Link Preview (misal link TikTok / YouTube):
+                    // Pesan teks pertama masuk tanpa gambar preview, lalu beberapa detik kemudian WhatsApp
+                    // mengupdate notifikasi dengan membawa gambar thumbnail link preview.
+                    if (finalMediaPath != null && recentMatch.mediaUri == null) {
+                        chatDao.updateMessageMedia(recentMatch.id, finalMediaPath, MessageEntity.TYPE_IMAGE)
+                        Log.i(TAG, "Menyematkan media thumbnail link preview ke pesan sebelumnya (skip duplikasi baris)")
+                    } else {
+                        Log.d(TAG, "Mengabaikan update notifikasi pesan duplikat identik dalam 25 detik: '$cleanText'")
+                    }
+                    return
+                }
+            }
 
             if (finalMediaPath != null) {
                 // Cek apakah foto dengan path/hash ini SUDAH PERNAH dicatat dalam percakapan ini
                 val alreadyHasMedia = chatDao.countMediaInConversation(conversationId, finalMediaPath) > 0
                 if (alreadyHasMedia) {
-                    if (messageText.isBlank() || messageText == "📷 [Foto]" ||
-                        DeletedMessageClassifier.isPlaceholderOrSummary(chatTitle, messageText, true)
+                    if (cleanText.isBlank() || cleanText == "📷 [Foto]" ||
+                        DeletedMessageClassifier.isPlaceholderOrSummary(chatTitle, cleanText, true)
                     ) {
                         Log.d(TAG, "Mengabaikan media duplikat yang sudah tersimpan: $finalMediaPath")
                         return
@@ -309,27 +357,6 @@ class ChatNotificationListenerService : NotificationListenerService() {
                         finalMediaPath = null
                     }
                 }
-            }
-
-            // Cek duplikasi teks identik dalam rentang 3 detik terakhir untuk menghindari multi-event update WhatsApp
-            if (finalMediaPath == null && messageText.isNotBlank()) {
-                val recentDuplicate = chatDao.countRecentDuplicateText(
-                    conversationId = conversationId,
-                    messageText = messageText,
-                    sinceTime = System.currentTimeMillis() - 3000L
-                ) > 0
-                if (recentDuplicate) {
-                    Log.d(TAG, "Mengabaikan notifikasi teks duplikat dalam 3 detik: '$messageText'")
-                    return
-                }
-            }
-
-            val messageType = if (finalMediaPath != null) MessageEntity.TYPE_IMAGE else MessageEntity.TYPE_TEXT
-
-            val cleanText = if (finalMediaPath != null && (messageText.isBlank() || messageText.lowercase().contains("sent a photo") || messageText.lowercase().contains("mengirim foto"))) {
-                "📷 [Foto]"
-            } else {
-                messageText
             }
 
             val newMessage = MessageEntity(

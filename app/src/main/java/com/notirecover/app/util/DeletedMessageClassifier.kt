@@ -95,7 +95,26 @@ object DeletedMessageClassifier {
             "tap to chat",
             "ketuk untuk mengobrol",
             "searching for incoming messages",
-            "mencari pesan masuk"
+            "mencari pesan masuk",
+            "file terkirim",
+            "berkas terkirim",
+            "dokumen terkirim",
+            "foto terkirim",
+            "video terkirim",
+            "pesan terkirim",
+            "file sent",
+            "message sent",
+            "sending file",
+            "sending document",
+            "sending media",
+            "mengirim file",
+            "mengirim berkas",
+            "mengirim dokumen",
+            "mengirim media",
+            "mengunggah",
+            "uploading",
+            "mengunduh",
+            "downloading"
         )
         return ignoreList.any { combined.contains(it) }
     }
@@ -118,7 +137,8 @@ object DeletedMessageClassifier {
             Regex("""^\(?\d+\s*(?:new messages?|pesan baru|unread messages?|pesan belum dibaca|messages?|pesan|msgs?)\)?$""", RegexOption.IGNORE_CASE),
             Regex("""^(new messages?|pesan baru|unread messages?|pesan belum dibaca)$""", RegexOption.IGNORE_CASE),
             Regex("""^\d+\s*(?:pesan dari|messages from)\s+\d+\s*(?:obrolan|chats?)$""", RegexOption.IGNORE_CASE),
-            Regex("""^\d+\s*(?:pesan|messages?)\s+(?:dari|from)\s+.*$""", RegexOption.IGNORE_CASE)
+            Regex("""^\d+\s*(?:pesan|messages?)\s+(?:dari|from)\s+.*$""", RegexOption.IGNORE_CASE),
+            Regex("""^(?:\d+\s+)?(?:file|berkas|dokumen|foto|video|pesan)\s+(?:terkirim|sent)$""", RegexOption.IGNORE_CASE)
         )
         if (summaryRegexes.any { it.matches(cleanText) }) {
             return true
@@ -151,6 +171,8 @@ object DeletedMessageClassifier {
             "sent a file",
             "mengirim berkas",
             "mengirim file",
+            "file terkirim",
+            "berkas terkirim",
             "sent a document",
             "mengirim dokumen",
             "sent a contact",

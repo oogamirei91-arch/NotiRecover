@@ -149,6 +149,16 @@ class MainActivity : FragmentActivity() {
                                     }
                                     database.chatDao().deleteMessage(msg.id)
                                 }
+                            },
+                            onDeleteMultipleMessages = { msgSet ->
+                                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    msgSet.forEach { msg ->
+                                        msg.mediaUri?.let { path ->
+                                            try { java.io.File(path).delete() } catch (ignored: Exception) {}
+                                        }
+                                    }
+                                    database.chatDao().deleteMessagesByIds(msgSet.map { it.id })
+                                }
                             }
                         )
                     } else {
@@ -225,6 +235,16 @@ class MainActivity : FragmentActivity() {
                                                     try { java.io.File(path).delete() } catch (ignored: Exception) {}
                                                 }
                                                 database.chatDao().deleteMessage(media.id)
+                                            }
+                                        },
+                                        onDeleteMultipleMedia = { mediaSet ->
+                                            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                mediaSet.forEach { media ->
+                                                    media.mediaUri?.let { path ->
+                                                        try { java.io.File(path).delete() } catch (ignored: Exception) {}
+                                                    }
+                                                }
+                                                database.chatDao().deleteMessagesByIds(mediaSet.map { it.id })
                                             }
                                         }
                                     )

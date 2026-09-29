@@ -81,6 +81,20 @@ interface ChatDao {
     @Query("""
         SELECT * FROM messages 
         WHERE conversationId = :conversationId 
+          AND senderName = :senderName 
+          AND messageText = :messageText 
+          AND receivedAt > :sinceTime 
+        ORDER BY receivedAt DESC 
+        LIMIT 1
+    """)
+    suspend fun getRecentMatchingMessage(conversationId: Long, senderName: String, messageText: String, sinceTime: Long): MessageEntity?
+
+    @Query("UPDATE messages SET mediaUri = :mediaUri, messageType = :messageType WHERE id = :messageId")
+    suspend fun updateMessageMedia(messageId: Long, mediaUri: String, messageType: String)
+
+    @Query("""
+        SELECT * FROM messages 
+        WHERE conversationId = :conversationId 
           AND isDeleted = 0 
         ORDER BY receivedAt DESC 
         LIMIT 1
@@ -96,6 +110,9 @@ interface ChatDao {
 
     @Query("DELETE FROM messages WHERE id = :messageId")
     suspend fun deleteMessage(messageId: Long)
+
+    @Query("DELETE FROM messages WHERE id IN (:ids)")
+    suspend fun deleteMessagesByIds(ids: List<Long>)
 
     @Query("DELETE FROM messages WHERE conversationId = :conversationId")
     suspend fun deleteMessagesForConversation(conversationId: Long)

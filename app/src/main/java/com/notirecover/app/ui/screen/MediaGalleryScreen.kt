@@ -1,18 +1,20 @@
 package com.notirecover.app.ui.screen
 
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -39,29 +41,112 @@ import java.util.*
 @Composable
 fun MediaGalleryScreen(
     mediaMessages: List<MessageEntity>,
-    onDeleteMedia: (MessageEntity) -> Unit = {}
+    onDeleteMedia: (MessageEntity) -> Unit = {},
+    onDeleteMultipleMedia: (Set<MessageEntity>) -> Unit = {}
 ) {
     var selectedMediaForPreview by remember { mutableStateOf<MessageEntity?>(null) }
     var mediaToDelete by remember { mutableStateOf<MessageEntity?>(null) }
+    
+    // Selection mode states
+    var isSelectionMode by remember { mutableStateOf(false) }
+    var selectedItems by remember { mutableStateOf<Set<MessageEntity>>(emptySet()) }
+    var showBulkDeleteDialog by remember { mutableStateOf(false) }
+
+    // Handle back button when in selection mode
+    BackHandler(enabled = isSelectionMode) {
+        isSelectionMode = false
+        selectedItems = emptySet()
+    }
+
+    LaunchedEffect(mediaMessages) {
+        selectedItems = selectedItems.filter { sel -> mediaMessages.any { it.id == sel.id } }.toSet()
+        if (selectedItems.isEmpty() && isSelectionMode) {
+            isSelectionMode = false
+        }
+    }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
+            if (isSelectionMode) {
+                TopAppBar(
+                    title = {
                         Text(
-                            text = "Galeri Media Terpulihkan",
+                            text = "${selectedItems.size} Terpilih",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
-                        Text(
-                            text = "${mediaMessages.size} File Terselamatkan",
-                            fontSize = 12.sp,
-                            color = TextSecondaryLight
-                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            isSelectionMode = false
+                            selectedItems = emptySet()
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Batal Seleksi")
+                        }
+                    },
+                    actions = {
+                        // Tombol Pilih Semua / Batal Pilih Semua
+                        IconButton(onClick = {
+                            selectedItems = if (selectedItems.size == mediaMessages.size) {
+                                emptySet()
+                            } else {
+                                mediaMessages.toSet()
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (selectedItems.size == mediaMessages.size && mediaMessages.isNotEmpty())
+                                    Icons.Default.Deselect
+                                else
+                                    Icons.Default.SelectAll,
+                                contentDescription = "Pilih Semua"
+                            )
+                        }
+
+                        // Tombol Hapus Massal
+                        IconButton(
+                            onClick = { showBulkDeleteDialog = true },
+                            enabled = selectedItems.isNotEmpty()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Hapus Terpilih",
+                                tint = if (selectedItems.isNotEmpty()) Color(0xFFDC2626) else Color.Gray
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color(0xFFEFF6FF)
+                    )
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                text = "Galeri Media Terpulihkan",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
+                            )
+                            Text(
+                                text = "${mediaMessages.size} File Terselamatkan",
+                                fontSize = 12.sp,
+                                color = TextSecondaryLight
+                            )
+                        }
+                    },
+                    actions = {
+                        if (mediaMessages.isNotEmpty()) {
+                            IconButton(onClick = { isSelectionMode = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Checklist,
+                                    contentDescription = "Pilih Media",
+                                    tint = Color(0xFF2563EB)
+                                )
+                            }
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { paddingValues ->
         if (mediaMessages.isEmpty()) {
@@ -103,9 +188,31 @@ fun MediaGalleryScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(mediaMessages, key = { it.id }) { item ->
+                    val isSelected = selectedItems.any { it.id == item.id }
                     MediaGridItem(
                         message = item,
-                        onClick = { selectedMediaForPreview = item },
+                        isSelectionMode = isSelectionMode,
+                        isSelected = isSelected,
+                        onClick = {
+                            if (isSelectionMode) {
+                                selectedItems = if (isSelected) {
+                                    selectedItems.filter { it.id != item.id }.toSet()
+                                } else {
+                                    selectedItems + item
+                                }
+                                if (selectedItems.isEmpty()) {
+                                    isSelectionMode = false
+                                }
+                            } else {
+                                selectedMediaForPreview = item
+                            }
+                        },
+                        onLongClick = {
+                            if (!isSelectionMode) {
+                                isSelectionMode = true
+                                selectedItems = setOf(item)
+                            }
+                        },
                         onDeleteClick = { mediaToDelete = item }
                     )
                 }
@@ -124,7 +231,7 @@ fun MediaGalleryScreen(
             )
         }
 
-        // Dialog Konfirmasi Hapus Media
+        // Dialog Konfirmasi Hapus Media Satuan
         mediaToDelete?.let { media ->
             AlertDialog(
                 onDismissRequest = { mediaToDelete = null },
@@ -148,13 +255,45 @@ fun MediaGalleryScreen(
                 }
             )
         }
+
+        // Dialog Konfirmasi Hapus Massal (Bulk Delete)
+        if (showBulkDeleteDialog) {
+            AlertDialog(
+                onDismissRequest = { showBulkDeleteDialog = false },
+                title = { Text("Hapus ${selectedItems.size} Gambar Terpilih?", fontWeight = FontWeight.Bold) },
+                text = { Text("Semua file gambar yang dipilih akan dihapus permanen dari memori internal aplikasi.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val itemsToDelete = selectedItems
+                            showBulkDeleteDialog = false
+                            isSelectionMode = false
+                            selectedItems = emptySet()
+                            onDeleteMultipleMedia(itemsToDelete)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    ) {
+                        Text("Hapus", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showBulkDeleteDialog = false }) {
+                        Text("Batal")
+                    }
+                }
+            )
+        }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MediaGridItem(
     message: MessageEntity,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onDeleteClick: () -> Unit = {}
 ) {
     val bitmap = remember(message.mediaUri) {
@@ -174,9 +313,14 @@ fun MediaGridItem(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         shape = RoundedCornerShape(12.dp),
-        shadowElevation = 2.dp,
+        shadowElevation = if (isSelected) 4.dp else 2.dp,
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF2563EB)) else null,
         color = MaterialTheme.colorScheme.surface
     ) {
         Column {
@@ -200,6 +344,30 @@ fun MediaGridItem(
                         contentDescription = null,
                         tint = Color.Gray
                     )
+                }
+
+                // Checkbox / Indikator Seleksi
+                if (isSelectionMode) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .size(26.dp)
+                            .background(
+                                color = if (isSelected) Color(0xFF2563EB) else Color.Black.copy(alpha = 0.45f),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isSelected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Terpilih",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
 
                 // Badge Jika Dihapus Pengirim
@@ -244,16 +412,18 @@ fun MediaGridItem(
                     )
                 }
 
-                IconButton(
-                    onClick = onDeleteClick,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Hapus Gambar",
-                        tint = Color(0xFF94A3B8),
-                        modifier = Modifier.size(16.dp)
-                    )
+                if (!isSelectionMode) {
+                    IconButton(
+                        onClick = onDeleteClick,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Hapus Gambar",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }
