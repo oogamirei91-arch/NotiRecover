@@ -42,6 +42,7 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
 
         BackupHelper.restoreDatabaseIfAvailable(this)
+        PermissionHelper.ensureNotificationListenerRebound(this)
 
         val app = application as NotiRecoverApp
         val database = app.database
@@ -258,6 +259,11 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        PermissionHelper.ensureNotificationListenerRebound(this)
     }
 
     override fun onPause() {

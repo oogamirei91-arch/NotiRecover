@@ -34,6 +34,33 @@ object PermissionHelper {
     }
 
     /**
+     * Memastikan NotificationListenerService terhubung kembali setelah aplikasi diupdate/diinstal ulang.
+     */
+    fun ensureNotificationListenerRebound(context: Context) {
+        if (isNotificationServiceEnabled(context)) {
+            val cn = ComponentName(context, ChatNotificationListenerService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    android.service.notification.NotificationListenerService.requestRebind(cn)
+                } catch (ignored: Exception) {}
+            }
+            try {
+                val pm = context.packageManager
+                pm.setComponentEnabledSetting(
+                    cn,
+                    android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    android.content.pm.PackageManager.DONT_KILL_APP
+                )
+                pm.setComponentEnabledSetting(
+                    cn,
+                    android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                    android.content.pm.PackageManager.DONT_KILL_APP
+                )
+            } catch (ignored: Exception) {}
+        }
+    }
+
+    /**
      * Memeriksa apakah aplikasi sudah dikecualikan dari Battery Optimization.
      */
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {

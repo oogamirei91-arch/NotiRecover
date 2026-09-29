@@ -95,28 +95,17 @@ object DeletedMessageClassifier {
             "tap to chat",
             "ketuk untuk mengobrol",
             "searching for incoming messages",
-            "mencari pesan masuk",
-            "file terkirim",
-            "berkas terkirim",
-            "dokumen terkirim",
-            "foto terkirim",
-            "video terkirim",
-            "pesan terkirim",
-            "file sent",
-            "message sent",
-            "sending file",
-            "sending document",
-            "sending media",
-            "mengirim file",
-            "mengirim berkas",
-            "mengirim dokumen",
-            "mengirim media",
-            "mengunggah",
-            "uploading",
-            "mengunduh",
-            "downloading"
+            "mencari pesan masuk"
         )
-        return ignoreList.any { combined.contains(it) }
+        if (ignoreList.any { combined.contains(it) }) return true
+
+        // Hanya abaikan jika teks notifikasi secara utuh adalah status transfer file/pengiriman (bukan isi chat biasa)
+        val isFileTransferStatus = cleanText.matches(
+            Regex("""^(?:\d+\s+)?(?:file|berkas|dokumen|foto|video|pesan)\s+(?:terkirim|sent)$""", RegexOption.IGNORE_CASE)
+        ) || cleanText.matches(
+            Regex("""^(?:sending|mengirim|uploading|mengunggah|downloading|mengunduh)\s+(?:file|berkas|dokumen|media|foto|video).*$""", RegexOption.IGNORE_CASE)
+        )
+        return isFileTransferStatus
     }
 
     /**

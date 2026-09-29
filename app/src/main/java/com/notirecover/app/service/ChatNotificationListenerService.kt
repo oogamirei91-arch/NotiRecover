@@ -98,32 +98,20 @@ class ChatNotificationListenerService : NotificationListenerService() {
             return
         }
 
-        // 2. Abaikan notifikasi Ongoing / Foreground Service / Progress Pengiriman File (misal "File terkirim")
-        val isForegroundService = (notification.flags and 0x00000040) != 0 // FLAG_FOREGROUND_SERVICE (internal Android flag)
-        if (sbn.isOngoing ||
-            (notification.flags and Notification.FLAG_ONGOING_EVENT) != 0 ||
-            isForegroundService ||
-            notification.category == Notification.CATEGORY_PROGRESS ||
-            notification.category == Notification.CATEGORY_SERVICE
-        ) {
-            Log.d(TAG, "Mengabaikan notifikasi ongoing/progress/service dari $packageName")
-            return
-        }
-
         val extras = notification.extras ?: return
 
-        // Abaikan notifikasi transfer progress bar
-        if (extras.containsKey(Notification.EXTRA_PROGRESS) ||
-            extras.containsKey(Notification.EXTRA_PROGRESS_MAX)
-        ) {
-            Log.d(TAG, "Mengabaikan notifikasi progress transfer dari $packageName")
+        // Abaikan notifikasi progress transfer file yang sedang berjalan (progress bar aktif)
+        val progressMax = extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0)
+        val progressCurrent = extras.getInt(Notification.EXTRA_PROGRESS, 0)
+        if (progressMax > 0 && progressCurrent < progressMax) {
+            Log.d(TAG, "Mengabaikan notifikasi progress transfer file dari $packageName")
             return
         }
 
-        // 3. Ekstrak data chat terstruktur (memisahkan nama grup & nama pengirim asli)
+        // 2. Ekstrak data chat terstruktur (memisahkan nama grup & nama pengirim asli)
         val parsed = parseNotification(notification, extras) ?: return
 
-        // 4. Abaikan notifikasi sistem internal
+        // 3. Abaikan notifikasi sistem internal & status transfer file
         if (DeletedMessageClassifier.isSystemNotification(parsed.chatTitle, parsed.messageText)) {
             Log.d(TAG, "Mengabaikan notifikasi sistem: ${parsed.chatTitle} - ${parsed.messageText}")
             return
@@ -321,13 +309,13 @@ class ChatNotificationListenerService : NotificationListenerService() {
                 messageText
             }
 
-            // Cek apakah pesan dengan teks & pengirim yang sama persis sudah masuk dalam 25 detik terakhir
+            // Cek apakah pesan dengan teks & pengirim yang sama persis sudah masuk dalam 6 detik terakhir (menghindari duplikasi multi-event link preview WhatsApp)
             if (cleanText.isNotBlank()) {
                 val recentMatch = chatDao.getRecentMatchingMessage(
                     conversationId = conversationId,
                     senderName = senderName,
                     messageText = cleanText,
-                    sinceTime = System.currentTimeMillis() - 25000L
+                    sinceTime = System.currentTimeMillis() - 6000L
                 )
 
                 if (recentMatch != null) {
@@ -338,7 +326,7 @@ class ChatNotificationListenerService : NotificationListenerService() {
                         chatDao.updateMessageMedia(recentMatch.id, finalMediaPath, MessageEntity.TYPE_IMAGE)
                         Log.i(TAG, "Menyematkan media thumbnail link preview ke pesan sebelumnya (skip duplikasi baris)")
                     } else {
-                        Log.d(TAG, "Mengabaikan update notifikasi pesan duplikat identik dalam 25 detik: '$cleanText'")
+                        Log.d(TAG, "Mengabaikan update notifikasi pesan duplikat identik dalam 6 detik: '$cleanText'")
                     }
                     return
                 }
