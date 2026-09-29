@@ -223,6 +223,155 @@ private fun getInstagramGhostModeScript(enabled: Boolean): String {
     """.trimIndent()
 }
 
+private fun getWhatsAppGhostModeScript(enabled: Boolean): String {
+    return """
+        (function() {
+            try {
+                window.__waGhostModeEnabled = $enabled;
+                if (window.__waGhostModeInstalled) {
+                    return;
+                }
+                window.__waGhostModeInstalled = true;
+
+                function notifyBlocked(method, detail) {
+                    try {
+                        console.log('👻 [WA Ghost Mode] Blocked ' + method + ' (' + detail + ')');
+                        if (window.GhostBridge && typeof window.GhostBridge.onSeenBlocked === 'function') {
+                            window.GhostBridge.onSeenBlocked('WhatsApp: ' + method + ' (' + detail + ')');
+                        }
+                    } catch(e) {}
+                }
+
+                function isStatusTarget(arg) {
+                    if (!arg) return false;
+                    try {
+                        if (typeof arg === 'string') {
+                            var s = arg.toLowerCase();
+                            return s.indexOf('broadcast') !== -1 || s.indexOf('status') !== -1;
+                        }
+                        if (typeof arg === 'object') {
+                            if (arg.isStatusV3 || arg.isStatus) return true;
+                            var sId = String(arg.id?._serialized || arg.id || arg._serialized || (arg.key && arg.key.remoteJid) || '').toLowerCase();
+                            if (sId.indexOf('broadcast') !== -1 || sId.indexOf('status') !== -1) return true;
+                            if (arg.chat) {
+                                var cId = String(arg.chat.id?._serialized || arg.chat.id || '').toLowerCase();
+                                if (cId.indexOf('broadcast') !== -1 || cId.indexOf('status') !== -1) return true;
+                            }
+                            if (arg.to) {
+                                var toId = String(arg.to?._serialized || arg.to || '').toLowerCase();
+                                if (toId.indexOf('broadcast') !== -1 || toId.indexOf('status') !== -1) return true;
+                            }
+                        }
+                    } catch(e) {}
+                    return false;
+                }
+
+                function hookMethod(obj, method, isAlwaysStatus) {
+                    if (!obj || typeof obj[method] !== 'function' || obj[method].__ghostHooked) return;
+                    var original = obj[method];
+                    obj[method] = function() {
+                        try {
+                            if (window.__waGhostModeEnabled) {
+                                if (isAlwaysStatus) {
+                                    notifyBlocked(method, 'status');
+                                    return Promise.resolve();
+                                }
+                                for (var i = 0; i < arguments.length; i++) {
+                                    if (isStatusTarget(arguments[i])) {
+                                        notifyBlocked(method, 'status@broadcast');
+                                        return Promise.resolve();
+                                    }
+                                }
+                            }
+                        } catch(e) {}
+                        return original.apply(this, arguments);
+                    };
+                    obj[method].__ghostHooked = true;
+                }
+
+                function inspectAndHook(mod) {
+                    if (!mod || typeof mod !== 'object') return;
+                    var candidates = [mod, mod.default].filter(Boolean);
+                    for (var i = 0; i < candidates.length; i++) {
+                        var c = candidates[i];
+                        if (typeof c !== 'object') continue;
+
+                        // Dedicated status methods (always block when Ghost Mode is on)
+                        hookMethod(c, 'sendReadStatus', true);
+                        hookMethod(c, 'sendSeenStatus', true);
+                        hookMethod(c, 'sendStatusSeen', true);
+                        hookMethod(c, 'markStatusRead', true);
+
+                        // General read receipt methods (block only if target is status@broadcast)
+                        hookMethod(c, 'sendSeen', false);
+                        hookMethod(c, 'markSeen', false);
+                        hookMethod(c, 'sendReceipt', false);
+                        hookMethod(c, 'sendMsgReceipt', false);
+                        hookMethod(c, 'markIsRead', false);
+                        hookMethod(c, 'sendReadReceipt', false);
+                    }
+                }
+
+                function scanModules(requireFn) {
+                    try {
+                        if (!requireFn) return;
+                        var cache = requireFn.c || {};
+                        for (var id in cache) {
+                            try {
+                                if (cache[id] && cache[id].exports) {
+                                    inspectAndHook(cache[id].exports);
+                                }
+                            } catch(e) {}
+                        }
+                    } catch(e) {}
+                }
+
+                var waRequire = null;
+
+                function initWebpackHook() {
+                    try {
+                        if (!window.webpackChunkwhatsapp_web_client) {
+                            setTimeout(initWebpackHook, 500);
+                            return;
+                        }
+
+                        // Register custom chunk to capture Webpack require
+                        window.webpackChunkwhatsapp_web_client.push([
+                            [Symbol('ghostModeHook')],
+                            {},
+                            function(req) {
+                                waRequire = req;
+                                scanModules(waRequire);
+                            }
+                        ]);
+
+                        // Hook future chunk pushes
+                        var realPush = window.webpackChunkwhatsapp_web_client.push;
+                        window.webpackChunkwhatsapp_web_client.push = function() {
+                            var res = realPush.apply(this, arguments);
+                            try {
+                                scanModules(waRequire);
+                            } catch(e) {}
+                            return res;
+                        };
+
+                        // Periodic scan every 3 seconds for dynamically lazy-loaded status chunks
+                        setInterval(function() {
+                            scanModules(waRequire);
+                        }, 3000);
+                    } catch(e) {
+                        console.error('👻 WA GhostMode Webpack init error:', e);
+                    }
+                }
+
+                initWebpackHook();
+            } catch(fatal) {
+                console.error('👻 WA GhostMode fatal error:', fatal);
+            }
+        })();
+    """.trimIndent()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -274,28 +423,33 @@ fun WebScreen() {
                             fontSize = 17.sp
                         )
                         Text(
-                            text = if (selectedWeb == "INSTAGRAM") {
-                                if (isGhostModeEnabled) "👻 Ghost Mode Aktif (Seen Story Diblokir)" else "Ghost Mode Nonaktif"
-                            } else {
-                                if (isDesktopMode) "Mode Tampilan Desktop (QR Code Aktif)" else "Mode Tampilan Mobile"
+                            text = when (selectedWeb) {
+                                "WHATSAPP" -> if (isGhostModeEnabled) "👻 Ghost Mode Aktif (Status Seen Diblokir)" else "Ghost Mode Nonaktif"
+                                "INSTAGRAM" -> if (isGhostModeEnabled) "👻 Ghost Mode Aktif (Seen Story Diblokir)" else "Ghost Mode Nonaktif"
+                                else -> if (isDesktopMode) "Mode Tampilan Desktop (QR Code Aktif)" else "Mode Tampilan Mobile"
                             },
                             fontSize = 11.sp,
-                            color = if (selectedWeb == "INSTAGRAM" && isGhostModeEnabled) Color(0xFF7C3AED) else Color(0xFF64748B),
-                            fontWeight = if (selectedWeb == "INSTAGRAM" && isGhostModeEnabled) FontWeight.SemiBold else FontWeight.Normal
+                            color = if ((selectedWeb == "WHATSAPP" || selectedWeb == "INSTAGRAM") && isGhostModeEnabled) Color(0xFF7C3AED) else Color(0xFF64748B),
+                            fontWeight = if ((selectedWeb == "WHATSAPP" || selectedWeb == "INSTAGRAM") && isGhostModeEnabled) FontWeight.SemiBold else FontWeight.Normal
                         )
                     }
                 },
                 actions = {
-                    // Tombol Ghost Mode (Khusus Instagram Web)
-                    if (selectedWeb == "INSTAGRAM") {
+                    // Tombol Ghost Mode (Tersedia untuk WhatsApp & Instagram Web)
+                    if (selectedWeb == "WHATSAPP" || selectedWeb == "INSTAGRAM") {
                         FilterChip(
                             selected = isGhostModeEnabled,
                             onClick = {
                                 isGhostModeEnabled = !isGhostModeEnabled
-                                webViewInstance?.evaluateJavascript("window.__ghostModeEnabled = $isGhostModeEnabled;", null)
+                                if (selectedWeb == "INSTAGRAM") {
+                                    webViewInstance?.evaluateJavascript("window.__ghostModeEnabled = $isGhostModeEnabled;", null)
+                                } else if (selectedWeb == "WHATSAPP") {
+                                    webViewInstance?.evaluateJavascript("window.__waGhostModeEnabled = $isGhostModeEnabled;", null)
+                                }
+                                val targetName = if (selectedWeb == "WHATSAPP") "WhatsApp Status" else "Instagram Story"
                                 Toast.makeText(
                                     context,
-                                    if (isGhostModeEnabled) "👻 Ghost Mode AKTIF: Story Seen Diblokir!" else "Ghost Mode NONAKTIF: Seen Normal",
+                                    if (isGhostModeEnabled) "👻 Ghost Mode AKTIF: $targetName Seen Diblokir!" else "Ghost Mode NONAKTIF: Seen Normal",
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
@@ -401,7 +555,13 @@ fun WebScreen() {
                             loadCurrentUrl()
                         }
                     },
-                    text = { Text("WhatsApp", fontWeight = FontWeight.SemiBold) }
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("WhatsApp", fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("👻", fontSize = 12.sp)
+                        }
+                    }
                 )
                 Tab(
                     selected = selectedWeb == "INSTAGRAM",
@@ -433,8 +593,8 @@ fun WebScreen() {
                 )
             }
 
-            // Banner Indikator Ghost Mode saat berada di Instagram
-            AnimatedVisibility(visible = selectedWeb == "INSTAGRAM" && isGhostModeEnabled) {
+            // Banner Indikator Ghost Mode saat berada di WhatsApp atau Instagram
+            AnimatedVisibility(visible = (selectedWeb == "WHATSAPP" || selectedWeb == "INSTAGRAM") && isGhostModeEnabled) {
                 Surface(
                     color = Color(0xFFF3E8FF),
                     modifier = Modifier.fillMaxWidth()
@@ -446,7 +606,11 @@ fun WebScreen() {
                         Text("👻", fontSize = 14.sp)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Ghost Mode Aktif: Anda bisa menonton story tanpa nama Anda muncul di daftar penonton!",
+                            text = if (selectedWeb == "WHATSAPP") {
+                                "Ghost Mode Aktif: Anda bisa melihat status WhatsApp tanpa nama Anda muncul di daftar penonton!"
+                            } else {
+                                "Ghost Mode Aktif: Anda bisa menonton story tanpa nama Anda muncul di daftar penonton!"
+                            },
                             fontSize = 11.sp,
                             color = Color(0xFF6B21A8),
                             fontWeight = FontWeight.Medium
@@ -509,7 +673,8 @@ fun WebScreen() {
                             if (now - lastToastTime > 3000L) {
                                 lastToastTime = now
                                 mainHandler.post {
-                                    Toast.makeText(context, "👻 Ghost Mode: Story seen berhasil diblokir! (Anonim)", Toast.LENGTH_SHORT).show()
+                                    val targetLabel = if (info.contains("WhatsApp", ignoreCase = true)) "WhatsApp Status" else "Instagram Story"
+                                    Toast.makeText(context, "👻 Ghost Mode: $targetLabel seen berhasil diblokir! (Anonim)", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }, "GhostBridge")
@@ -519,6 +684,8 @@ fun WebScreen() {
                                 super.onPageStarted(view, url, favicon)
                                 if (selectedWeb == "INSTAGRAM") {
                                     view?.evaluateJavascript(getInstagramGhostModeScript(isGhostModeEnabled), null)
+                                } else if (selectedWeb == "WHATSAPP") {
+                                    view?.evaluateJavascript(getWhatsAppGhostModeScript(isGhostModeEnabled), null)
                                 }
                             }
 
@@ -526,6 +693,8 @@ fun WebScreen() {
                                 super.onPageFinished(view, url)
                                 if (selectedWeb == "INSTAGRAM") {
                                     view?.evaluateJavascript(getInstagramGhostModeScript(isGhostModeEnabled), null)
+                                } else if (selectedWeb == "WHATSAPP") {
+                                    view?.evaluateJavascript(getWhatsAppGhostModeScript(isGhostModeEnabled), null)
                                 }
                             }
 
