@@ -360,6 +360,8 @@ class ChatNotificationListenerService : NotificationListenerService() {
                 }
             }
 
+            val messageType = if (finalMediaPath != null) MessageEntity.TYPE_IMAGE else MessageEntity.TYPE_TEXT
+
             val newMessage = MessageEntity(
                 conversationId = conversationId,
                 senderName = senderName, // Nama pengirim spesifik di dalam grup!
