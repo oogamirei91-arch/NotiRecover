@@ -1,16 +1,11 @@
 package com.notirecover.app.ui.screen
 
-import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -37,7 +32,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import com.notirecover.app.ui.theme.PrimaryBlue
 import com.notirecover.app.ui.theme.TextSecondaryLight
@@ -50,7 +44,7 @@ import java.io.InputStream
 @Composable
 fun StatusSaverScreen() {
     val context = LocalContext.current
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: WA Cache, 1: IG Story Ghost, 2: Downloaded
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: WA Cache, 1: Downloaded
     var statusList by remember { mutableStateOf<List<StatusMediaItem>>(emptyList()) }
     var downloadedList by remember { mutableStateOf<List<StatusMediaItem>>(emptyList()) }
     var selectedStatusForPreview by remember { mutableStateOf<StatusMediaItem?>(null) }
@@ -67,7 +61,7 @@ fun StatusSaverScreen() {
         mutableStateOf<Boolean>(PermissionHelper.hasAllFilesAccess() || StatusSaverHelper.getSavedTreeUri(context) != null)
     }
 
-    val currentList = if (selectedTab == 0) statusList else if (selectedTab == 2) downloadedList else emptyList()
+    val currentList = if (selectedTab == 0) statusList else downloadedList
 
     fun refreshStatuses() {
         hasAllFilesPermission = PermissionHelper.hasAllFilesAccess()
@@ -76,7 +70,7 @@ fun StatusSaverScreen() {
         hasFolderConnected = hasAllFilesPermission || StatusSaverHelper.getSavedTreeUri(context) != null || statusList.isNotEmpty()
         // Bersihkan item terpilih yang sudah tidak ada
         selectedItems = selectedItems.filter { item ->
-            currentList.any { it.name == item.name }
+            (if (selectedTab == 0) statusList else downloadedList).any { it.name == item.name }
         }.toSet()
         if (selectedItems.isEmpty() && isSelectionMode) {
             isSelectionMode = false
@@ -189,14 +183,9 @@ fun StatusSaverScreen() {
                                 }
                             }
                             Text(
-                                text = when (selectedTab) {
-                                    0 -> "${statusList.size} Status Terdeteksi (Incognito)"
-                                    1 -> "Lihat & Unduh Story Anonim (Ghost)"
-                                    else -> "${downloadedList.size} Status Tersimpan"
-                                },
+                                text = if (selectedTab == 0) "${statusList.size} Status Terdeteksi (Incognito)" else "${downloadedList.size} Status Tersimpan",
                                 fontSize = 12.sp,
-                                color = if (selectedTab == 1) Color(0xFF7C3AED) else TextSecondaryLight,
-                                fontWeight = if (selectedTab == 1) FontWeight.SemiBold else FontWeight.Normal
+                                color = TextSecondaryLight
                             )
                         }
                     },
@@ -232,17 +221,15 @@ fun StatusSaverScreen() {
                             }
 
                             // Tombol Hapus Semua di Tab Ini
-                            if (selectedTab == 2) {
+                            if (selectedTab == 1) {
                                 IconButton(onClick = { showDeleteAllDialog = true }) {
                                     Icon(Icons.Default.DeleteSweep, contentDescription = "Hapus Semua", tint = Color(0xFFDC2626))
                                 }
                             }
                         }
 
-                        if (selectedTab != 1) {
-                            IconButton(onClick = { refreshStatuses() }) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Segarkan Status")
-                            }
+                        IconButton(onClick = { refreshStatuses() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Segarkan Status")
                         }
                     }
                 )
@@ -254,7 +241,7 @@ fun StatusSaverScreen() {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Tab Switcher: Status WA vs IG Story 👻 vs Status Tersimpan (Download)
+            // Tab Switcher: Status WA vs Status Tersimpan (Download)
             TabRow(
                 selectedTabIndex = selectedTab,
                 modifier = Modifier.fillMaxWidth()
@@ -267,27 +254,12 @@ fun StatusSaverScreen() {
                         selectedItems = emptySet()
                         refreshStatuses()
                     },
-                    text = { Text("Status WA", fontWeight = FontWeight.SemiBold) }
+                    text = { Text("Status WhatsApp", fontWeight = FontWeight.SemiBold) }
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = {
                         selectedTab = 1
-                        isSelectionMode = false
-                        selectedItems = emptySet()
-                    },
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("IG Story", fontWeight = FontWeight.SemiBold)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("👻", fontSize = 12.sp)
-                        }
-                    }
-                )
-                Tab(
-                    selected = selectedTab == 2,
-                    onClick = {
-                        selectedTab = 2
                         isSelectionMode = false
                         selectedItems = emptySet()
                         downloadedList = StatusSaverHelper.getDownloadedStatuses(context)
@@ -469,14 +441,9 @@ fun StatusSaverScreen() {
                         }
                     }
                 }
-            } else if (selectedTab == 1) {
-                // ==========================================
-                // TAB 2: INSTAGRAM GHOST STORY
-                // ==========================================
-                InstagramGhostStoryView()
             } else {
                 // ==========================================
-                // TAB 3: STATUS TERSIMPAN (DOWNLOADED)
+                // TAB 2: STATUS TERSIMPAN (DOWNLOADED)
                 // ==========================================
                 Column(
                     modifier = Modifier
@@ -680,226 +647,6 @@ fun StatusSaverScreen() {
                 onSuccessPurchase = { refreshStatuses() }
             )
         }
-    }
-}
-
-@SuppressLint("SetJavaScriptEnabled")
-@Composable
-fun InstagramGhostStoryView() {
-    val context = LocalContext.current
-    var usernameInput by remember { mutableStateOf("") }
-    var currentUrl by remember { mutableStateOf("https://storiesig.info/en/") }
-    var webViewInstance by remember { mutableStateOf<WebView?>(null) }
-    var progress by remember { mutableIntStateOf(0) }
-
-    fun searchUser(name: String) {
-        val clean = name.trim().removePrefix("@").trim()
-        if (clean.isNotBlank()) {
-            val target = "https://storiesig.info/en/profile/$clean"
-            currentUrl = target
-            webViewInstance?.loadUrl(target)
-        } else {
-            Toast.makeText(context, "Ketik username akun Instagram publik terlebih dahulu", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-    ) {
-        // Banner Ghost Story
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = Color(0xFFF3E8FF),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE9D5FF)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("👻", fontSize = 28.sp)
-                Spacer(modifier = Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Instagram Ghost Story Viewer",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = Color(0xFF6B21A8)
-                    )
-                    Text(
-                        text = "Tonton & simpan Story Instagram tanpa ketahuan (100% anonim, tanpa perlu login). Nama Anda tidak akan muncul di daftar penonton!",
-                        fontSize = 11.sp,
-                        color = Color(0xFF7E22CE),
-                        lineHeight = 15.sp
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Input Username & Tombol Buka
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = usernameInput,
-                onValueChange = { usernameInput = it },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Username akun publik (contoh: cristiano)", fontSize = 12.sp) },
-                singleLine = true,
-                leadingIcon = {
-                    Text("@", fontWeight = FontWeight.Bold, color = Color(0xFF7C3AED), fontSize = 16.sp)
-                },
-                trailingIcon = {
-                    if (usernameInput.isNotBlank()) {
-                        IconButton(onClick = { usernameInput = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Hapus", modifier = Modifier.size(18.dp))
-                        }
-                    }
-                },
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    imeAction = androidx.compose.ui.text.input.ImeAction.Search
-                ),
-                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                    onSearch = { searchUser(usernameInput) }
-                ),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Button(
-                onClick = { searchUser(usernameInput) },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED)),
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp)
-            ) {
-                Icon(Icons.Default.Search, contentDescription = "Cari", modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Buka", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Chip Rekomendasi / Contoh Cepat
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Contoh:", fontSize = 11.sp, color = TextSecondaryLight)
-            listOf("cristiano", "selenagomez", "natgeo").forEach { sample ->
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFFF1F5F9),
-                    modifier = Modifier.clickable {
-                        usernameInput = sample
-                        searchUser(sample)
-                    }
-                ) {
-                    Text(
-                        text = "@$sample",
-                        fontSize = 11.sp,
-                        color = Color(0xFF334155),
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Banner Petunjuk Akun Privat -> Tab Web
-        Surface(
-            shape = RoundedCornerShape(10.dp),
-            color = Color(0xFFF8FAFC),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Untuk akun privat yang Anda ikuti, gunakan tab 'Instagram 👻' di menu Web.",
-                    fontSize = 11.sp,
-                    color = Color(0xFF64748B)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Loading Progress
-        AnimatedVisibility(visible = progress in 1..99) {
-            LinearProgressIndicator(
-                progress = { progress / 100f },
-                modifier = Modifier.fillMaxWidth().height(3.dp),
-                color = Color(0xFF7C3AED),
-                trackColor = Color(0xFFF3E8FF)
-            )
-        }
-
-        // WebView Anonymous Story Viewer
-        AndroidView(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(12.dp)),
-            factory = { ctx ->
-                WebView(ctx).apply {
-                    layoutParams = android.view.ViewGroup.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    settings.apply {
-                        javaScriptEnabled = true
-                        domStorageEnabled = true
-                        databaseEnabled = true
-                        useWideViewPort = true
-                        loadWithOverviewMode = true
-                        builtInZoomControls = true
-                        displayZoomControls = false
-                        userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-                    }
-
-                    setDownloadListener { url, _, _, _, _ ->
-                        try {
-                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url))
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Membuka tautan download...", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-
-                    webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            super.onPageFinished(view, url)
-                        }
-                    }
-
-                    webChromeClient = object : WebChromeClient() {
-                        override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                            super.onProgressChanged(view, newProgress)
-                            progress = newProgress
-                        }
-                    }
-
-                    loadUrl(currentUrl)
-                    webViewInstance = this
-                }
-            },
-            update = {
-                // Keep instance updated
-            }
-        )
     }
 }
 

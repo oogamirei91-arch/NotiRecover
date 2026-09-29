@@ -2,7 +2,10 @@ package com.notirecover.app.ui.screen
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -36,6 +39,190 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 
+class GhostBridge(private val onBlocked: (String) -> Unit) {
+    @JavascriptInterface
+    fun onSeenBlocked(info: String) {
+        onBlocked(info)
+    }
+}
+
+private fun getInstagramGhostModeScript(enabled: Boolean): String {
+    return """
+        (function() {
+            window.__ghostModeEnabled = $enabled;
+            if (window.__ghostModeInstalled) {
+                return;
+            }
+            window.__ghostModeInstalled = true;
+
+            function notifyBlocked(type, detail) {
+                try {
+                    if (window.GhostBridge && window.GhostBridge.onSeenBlocked) {
+                        window.GhostBridge.onSeenBlocked(type + ': ' + (detail || ''));
+                    }
+                } catch(e) {}
+            }
+
+            function extractText(data) {
+                if (!data) return '';
+                if (typeof data === 'string') return data;
+                try {
+                    if (data instanceof URLSearchParams) {
+                        return data.toString();
+                    }
+                    if (data instanceof FormData) {
+                        var res = '';
+                        for (var pair of data.entries()) {
+                            res += ' ' + pair[0] + '=' + pair[1];
+                        }
+                        return res;
+                    }
+                    if (typeof data === 'object') {
+                        return JSON.stringify(data);
+                    }
+                } catch(e) {}
+                return String(data);
+            }
+
+            function isSeenRequest(url, body) {
+                if (window.__ghostModeEnabled === false) return false;
+
+                var sUrl = (url ? (typeof url === 'string' ? url : (url.url || String(url))) : '').toLowerCase();
+                var sBody = extractText(body).toLowerCase();
+
+                if (sBody.indexOf('polarisstoriesv3seenmutation') !== -1 ||
+                    sBody.indexOf('polarisstoriesseenmutation') !== -1 ||
+                    sBody.indexOf('storiesseenmutation') !== -1 ||
+                    sBody.indexOf('polarisstoryseenmutation') !== -1 ||
+                    sBody.indexOf('polarisstoriesseen') !== -1 ||
+                    sBody.indexOf('polarisstoriesv3seen') !== -1 ||
+                    sBody.indexOf('storyseen') !== -1 ||
+                    sBody.indexOf('story_seen') !== -1 ||
+                    sBody.indexOf('stories_seen') !== -1 ||
+                    sBody.indexOf('stories/reel/seen') !== -1 ||
+                    sBody.indexOf('media/seen') !== -1 ||
+                    sBody.indexOf('seenmarker') !== -1 ||
+                    (sBody.indexOf('seen_at') !== -1 && sBody.indexOf('reel') !== -1) ||
+                    (sBody.indexOf('max_seen_at') !== -1 && sBody.indexOf('reel') !== -1) ||
+                    (sBody.indexOf('reel_media_id') !== -1 && sBody.indexOf('seen') !== -1)
+                ) {
+                    return true;
+                }
+
+                if (sUrl.indexOf('/stories/reel/seen') !== -1 ||
+                    sUrl.indexOf('/media/seen') !== -1 ||
+                    sUrl.indexOf('/stories/seen') !== -1 ||
+                    sUrl.indexOf('seenmarker') !== -1 ||
+                    sUrl.indexOf('polarisstoriesv3seen') !== -1 ||
+                    sUrl.indexOf('polarisstoriesseen') !== -1 ||
+                    sUrl.indexOf('storiesseenmutation') !== -1 ||
+                    sUrl.indexOf('/api/v1/stories/reel/seen') !== -1 ||
+                    sUrl.indexOf('/api/v1/media/seen') !== -1
+                ) {
+                    return true;
+                }
+
+                return false;
+            }
+
+            function createFakeSuccessResponse() {
+                return new Response(JSON.stringify({
+                    data: {
+                        polaris_stories_v3_seen: { status: 'OK', __typename: 'PolarisStoriesV3SeenMutationPayload' },
+                        polaris_stories_seen: { status: 'OK', __typename: 'PolarisStoriesSeenMutationPayload' },
+                        story_seen: { status: 'OK' }
+                    },
+                    status: 'ok'
+                }), {
+                    status: 200,
+                    statusText: 'OK',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    }
+                });
+            }
+
+            var realFetch = window.fetch;
+            async function ghostFetch(resource, init) {
+                var url = (resource && resource.url) ? resource.url : resource;
+                var body = init ? init.body : (resource && resource.body);
+
+                if (!body && resource && typeof resource.clone === 'function' && resource.method === 'POST') {
+                    try {
+                        var clone = resource.clone();
+                        body = await clone.text();
+                    } catch(e) {}
+                }
+
+                if (isSeenRequest(url, body)) {
+                    notifyBlocked('fetch', url);
+                    return Promise.resolve(createFakeSuccessResponse());
+                }
+
+                return realFetch.apply(this, arguments);
+            }
+
+            try {
+                Object.defineProperty(window, 'fetch', {
+                    configurable: true,
+                    enumerable: true,
+                    get: function() { return ghostFetch; },
+                    set: function(fn) {
+                        if (fn !== ghostFetch) {
+                            realFetch = fn;
+                        }
+                    }
+                });
+            } catch(e) {
+                window.fetch = ghostFetch;
+            }
+
+            var realOpen = XMLHttpRequest.prototype.open;
+            var realSend = XMLHttpRequest.prototype.send;
+
+            XMLHttpRequest.prototype.open = function(method, url) {
+                this.__ghostUrl = url;
+                this.__ghostMethod = method;
+                return realOpen.apply(this, arguments);
+            };
+
+            XMLHttpRequest.prototype.send = function(body) {
+                if (isSeenRequest(this.__ghostUrl, body)) {
+                    notifyBlocked('XHR', this.__ghostUrl);
+                    var self = this;
+                    setTimeout(function() {
+                        try {
+                            Object.defineProperty(self, 'readyState', { value: 4, writable: true });
+                            Object.defineProperty(self, 'status', { value: 200, writable: true });
+                            Object.defineProperty(self, 'statusText', { value: 'OK', writable: true });
+                            Object.defineProperty(self, 'responseText', {
+                                value: '{"data":{"polaris_stories_seen":{"status":"OK"},"polaris_stories_v3_seen":{"status":"OK"}},"status":"ok"}',
+                                writable: true
+                            });
+                        } catch(e) {}
+                        if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+                        if (typeof self.onload === 'function') self.onload();
+                    }, 10);
+                    return;
+                }
+                return realSend.apply(this, arguments);
+            };
+
+            if (navigator && navigator.sendBeacon) {
+                var realBeacon = navigator.sendBeacon;
+                navigator.sendBeacon = function(url, data) {
+                    if (isSeenRequest(url, data)) {
+                        notifyBlocked('sendBeacon', url);
+                        return true;
+                    }
+                    return realBeacon.apply(this, arguments);
+                };
+            }
+        })();
+    """.trimIndent()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -46,6 +233,8 @@ fun WebScreen() {
     var progress by remember { mutableIntStateOf(0) }
     var isDesktopMode by remember { mutableStateOf(true) }
     var isGhostModeEnabled by remember { mutableStateOf(true) }
+    var lastToastTime by remember { mutableLongStateOf(0L) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
     val desktopUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     val mobileUA = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
@@ -56,7 +245,7 @@ fun WebScreen() {
             "INSTAGRAM" -> "https://www.instagram.com"
             else -> "https://web.telegram.org/k/"
         }
-        val targetUA = if (selectedWeb == "INSTAGRAM") mobileUA else if (isDesktopMode) desktopUA else mobileUA
+        val targetUA = if (isDesktopMode) desktopUA else mobileUA
         webViewInstance?.settings?.userAgentString = targetUA
         webViewInstance?.loadUrl(targetUrl)
     }
@@ -104,6 +293,7 @@ fun WebScreen() {
                             selected = isGhostModeEnabled,
                             onClick = {
                                 isGhostModeEnabled = !isGhostModeEnabled
+                                webViewInstance?.evaluateJavascript("window.__ghostModeEnabled = $isGhostModeEnabled;", null)
                                 Toast.makeText(
                                     context,
                                     if (isGhostModeEnabled) "👻 Ghost Mode AKTIF: Story Seen Diblokir!" else "Ghost Mode NONAKTIF: Seen Normal",
@@ -130,18 +320,18 @@ fun WebScreen() {
                                 selectedLeadingIconColor = Color.White
                             )
                         )
-                    } else {
-                        // Tombol Ganti Mode Desktop / Mobile untuk WhatsApp & Telegram
-                        IconButton(onClick = {
-                            isDesktopMode = !isDesktopMode
-                            loadCurrentUrl()
-                        }) {
-                            Icon(
-                                imageVector = if (isDesktopMode) Icons.Default.DesktopWindows else Icons.Default.PhoneAndroid,
-                                contentDescription = "Ganti Mode Tampilan",
-                                tint = if (isDesktopMode) Color(0xFF2563EB) else Color(0xFF10B981)
-                            )
-                        }
+                    }
+
+                    // Tombol Ganti Mode Desktop / Mobile untuk semua tab
+                    IconButton(onClick = {
+                        isDesktopMode = !isDesktopMode
+                        loadCurrentUrl()
+                    }) {
+                        Icon(
+                            imageVector = if (isDesktopMode) Icons.Default.DesktopWindows else Icons.Default.PhoneAndroid,
+                            contentDescription = "Ganti Mode Tampilan",
+                            tint = if (isDesktopMode) Color(0xFF2563EB) else Color(0xFF10B981)
+                        )
                     }
 
                     IconButton(onClick = { webViewInstance?.reload() }) {
@@ -303,7 +493,39 @@ fun WebScreen() {
 
                         setInitialScale(100)
 
+                        addJavascriptInterface(GhostBridge { info ->
+                            android.util.Log.i("GhostMode", "👻 JS GhostBridge Blocked: $info")
+                            val now = System.currentTimeMillis()
+                            if (now - lastToastTime > 3000L) {
+                                lastToastTime = now
+                                mainHandler.post {
+                                    Toast.makeText(context, "👻 Ghost Mode: Story seen berhasil diblokir! (Anonim)", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }, "GhostBridge")
+
                         webViewClient = object : WebViewClient() {
+                            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                                super.onPageStarted(view, url, favicon)
+                                if (selectedWeb == "INSTAGRAM") {
+                                    view?.evaluateJavascript(getInstagramGhostModeScript(isGhostModeEnabled), null)
+                                }
+                            }
+
+                            override fun onLoadResource(view: WebView?, url: String?) {
+                                super.onLoadResource(view, url)
+                                if (selectedWeb == "INSTAGRAM") {
+                                    view?.evaluateJavascript(getInstagramGhostModeScript(isGhostModeEnabled), null)
+                                }
+                            }
+
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                super.onPageFinished(view, url)
+                                if (selectedWeb == "INSTAGRAM") {
+                                    view?.evaluateJavascript(getInstagramGhostModeScript(isGhostModeEnabled), null)
+                                }
+                            }
+
                             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                                 if (isGhostModeEnabled && request != null) {
                                     val url = request.url.toString().lowercase()
@@ -311,58 +533,31 @@ fun WebScreen() {
                                     if (url.contains("/api/v1/stories/reel/seen") ||
                                         url.contains("/api/v1/media/seen") ||
                                         url.contains("/stories/reel/seen") ||
+                                        url.contains("/stories/seen") ||
+                                        url.contains("/media/seen") ||
                                         url.contains("seenmarker") ||
-                                        (url.contains("/graphql/query") && url.contains("story_view")) ||
-                                        (request.method.equals("POST", ignoreCase = true) && url.contains("seen"))
+                                        url.contains("polarisstoriesseen") ||
+                                        url.contains("polarisstoriesv3seen") ||
+                                        url.contains("storiesseenmutation") ||
+                                        url.contains("story_view") ||
+                                        (url.contains("/graphql") && (url.contains("seen") || url.contains("story_view")))
                                     ) {
-                                        android.util.Log.i("GhostMode", "👻 Berhasil memblokir tracking seen story Instagram: $url")
+                                        android.util.Log.i("GhostMode", "👻 [BLOCKED by Native Interceptor] $url")
                                         return WebResourceResponse(
                                             "application/json",
                                             "UTF-8",
                                             200,
                                             "OK",
-                                            mapOf("Access-Control-Allow-Origin" to "*"),
-                                            java.io.ByteArrayInputStream("""{"status":"ok"}""".toByteArray())
+                                            mapOf(
+                                                "Access-Control-Allow-Origin" to "*",
+                                                "Access-Control-Allow-Methods" to "GET, POST, OPTIONS",
+                                                "Access-Control-Allow-Headers" to "*"
+                                            ),
+                                            java.io.ByteArrayInputStream("""{"data":{"polaris_stories_v3_seen":{"status":"OK"},"polaris_stories_seen":{"status":"OK"}},"status":"ok"}""".toByteArray())
                                         )
                                     }
                                 }
                                 return super.shouldInterceptRequest(view, request)
-                            }
-
-                            override fun onPageFinished(view: WebView?, url: String?) {
-                                super.onPageFinished(view, url)
-                                if (selectedWeb == "INSTAGRAM" && isGhostModeEnabled) {
-                                    // Injeksi pengaman fetch & XHR seen blocker di level JavaScript
-                                    val ghostJs = """
-                                        (function() {
-                                            if (window.__ghostModeInjected) return;
-                                            window.__ghostModeInjected = true;
-                                            const origFetch = window.fetch;
-                                            window.fetch = async function(...args) {
-                                                const u = (args[0] && args[0].url) ? args[0].url : String(args[0]);
-                                                if (u.toLowerCase().includes('seen')) {
-                                                    console.log('👻 Ghost Mode JS: fetch seen blocked', u);
-                                                    return new Response(JSON.stringify({status: 'ok'}), { status: 200, headers: {'Content-Type':'application/json'} });
-                                                }
-                                                return origFetch.apply(this, args);
-                                            };
-                                            const origOpen = XMLHttpRequest.prototype.open;
-                                            XMLHttpRequest.prototype.open = function(m, u) {
-                                                if (u && u.toLowerCase().includes('seen')) {
-                                                    console.log('👻 Ghost Mode JS: XHR seen blocked', u);
-                                                    this.send = function() {
-                                                        Object.defineProperty(this, 'readyState', { value: 4 });
-                                                        Object.defineProperty(this, 'status', { value: 200 });
-                                                        Object.defineProperty(this, 'responseText', { value: '{"status":"ok"}' });
-                                                        if (this.onload) this.onload();
-                                                    };
-                                                }
-                                                return origOpen.apply(this, arguments);
-                                            };
-                                        })();
-                                    """.trimIndent()
-                                    view?.evaluateJavascript(ghostJs, null)
-                                }
                             }
                         }
 
