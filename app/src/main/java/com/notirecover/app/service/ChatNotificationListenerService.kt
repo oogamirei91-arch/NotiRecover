@@ -99,9 +99,10 @@ class ChatNotificationListenerService : NotificationListenerService() {
         }
 
         // 2. Abaikan notifikasi Ongoing / Foreground Service / Progress Pengiriman File (misal "File terkirim")
+        val isForegroundService = (notification.flags and 0x00000040) != 0 // FLAG_FOREGROUND_SERVICE (internal Android flag)
         if (sbn.isOngoing ||
             (notification.flags and Notification.FLAG_ONGOING_EVENT) != 0 ||
-            (notification.flags and Notification.FLAG_FOREGROUND_SERVICE) != 0 ||
+            isForegroundService ||
             notification.category == Notification.CATEGORY_PROGRESS ||
             notification.category == Notification.CATEGORY_SERVICE
         ) {
