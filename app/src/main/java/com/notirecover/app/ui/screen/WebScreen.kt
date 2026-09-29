@@ -49,175 +49,175 @@ class GhostBridge(private val onBlocked: (String) -> Unit) {
 private fun getInstagramGhostModeScript(enabled: Boolean): String {
     return """
         (function() {
-            window.__ghostModeEnabled = $enabled;
-            if (window.__ghostModeInstalled) {
-                return;
-            }
-            window.__ghostModeInstalled = true;
-
-            function notifyBlocked(type, detail) {
-                try {
-                    if (window.GhostBridge && window.GhostBridge.onSeenBlocked) {
-                        window.GhostBridge.onSeenBlocked(type + ': ' + (detail || ''));
-                    }
-                } catch(e) {}
-            }
-
-            function extractText(data) {
-                if (!data) return '';
-                if (typeof data === 'string') return data;
-                try {
-                    if (data instanceof URLSearchParams) {
-                        return data.toString();
-                    }
-                    if (data instanceof FormData) {
-                        var res = '';
-                        for (var pair of data.entries()) {
-                            res += ' ' + pair[0] + '=' + pair[1];
-                        }
-                        return res;
-                    }
-                    if (typeof data === 'object') {
-                        return JSON.stringify(data);
-                    }
-                } catch(e) {}
-                return String(data);
-            }
-
-            function isSeenRequest(url, body) {
-                if (window.__ghostModeEnabled === false) return false;
-
-                var sUrl = (url ? (typeof url === 'string' ? url : (url.url || String(url))) : '').toLowerCase();
-                var sBody = extractText(body).toLowerCase();
-
-                if (sBody.indexOf('polarisstoriesv3seenmutation') !== -1 ||
-                    sBody.indexOf('polarisstoriesseenmutation') !== -1 ||
-                    sBody.indexOf('storiesseenmutation') !== -1 ||
-                    sBody.indexOf('polarisstoryseenmutation') !== -1 ||
-                    sBody.indexOf('polarisstoriesseen') !== -1 ||
-                    sBody.indexOf('polarisstoriesv3seen') !== -1 ||
-                    sBody.indexOf('storyseen') !== -1 ||
-                    sBody.indexOf('story_seen') !== -1 ||
-                    sBody.indexOf('stories_seen') !== -1 ||
-                    sBody.indexOf('stories/reel/seen') !== -1 ||
-                    sBody.indexOf('media/seen') !== -1 ||
-                    sBody.indexOf('seenmarker') !== -1 ||
-                    (sBody.indexOf('seen_at') !== -1 && sBody.indexOf('reel') !== -1) ||
-                    (sBody.indexOf('max_seen_at') !== -1 && sBody.indexOf('reel') !== -1) ||
-                    (sBody.indexOf('reel_media_id') !== -1 && sBody.indexOf('seen') !== -1)
-                ) {
-                    return true;
+            try {
+                window.__ghostModeEnabled = $enabled;
+                if (window.__ghostModeInstalled) {
+                    return;
                 }
+                window.__ghostModeInstalled = true;
 
-                if (sUrl.indexOf('/stories/reel/seen') !== -1 ||
-                    sUrl.indexOf('/media/seen') !== -1 ||
-                    sUrl.indexOf('/stories/seen') !== -1 ||
-                    sUrl.indexOf('seenmarker') !== -1 ||
-                    sUrl.indexOf('polarisstoriesv3seen') !== -1 ||
-                    sUrl.indexOf('polarisstoriesseen') !== -1 ||
-                    sUrl.indexOf('storiesseenmutation') !== -1 ||
-                    sUrl.indexOf('/api/v1/stories/reel/seen') !== -1 ||
-                    sUrl.indexOf('/api/v1/media/seen') !== -1
-                ) {
-                    return true;
-                }
-
-                return false;
-            }
-
-            function createFakeSuccessResponse() {
-                return new Response(JSON.stringify({
-                    data: {
-                        polaris_stories_v3_seen: { status: 'OK', __typename: 'PolarisStoriesV3SeenMutationPayload' },
-                        polaris_stories_seen: { status: 'OK', __typename: 'PolarisStoriesSeenMutationPayload' },
-                        story_seen: { status: 'OK' }
-                    },
-                    status: 'ok'
-                }), {
-                    status: 200,
-                    statusText: 'OK',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Access-Control-Allow-Origin': '*'
-                    }
-                });
-            }
-
-            var realFetch = window.fetch;
-            async function ghostFetch(resource, init) {
-                var url = (resource && resource.url) ? resource.url : resource;
-                var body = init ? init.body : (resource && resource.body);
-
-                if (!body && resource && typeof resource.clone === 'function' && resource.method === 'POST') {
+                function notifyBlocked(type, detail) {
                     try {
-                        var clone = resource.clone();
-                        body = await clone.text();
+                        if (window.GhostBridge && window.GhostBridge.onSeenBlocked) {
+                            window.GhostBridge.onSeenBlocked(type + ': ' + (detail || ''));
+                        }
                     } catch(e) {}
                 }
 
-                if (isSeenRequest(url, body)) {
-                    notifyBlocked('fetch', url);
-                    return Promise.resolve(createFakeSuccessResponse());
-                }
-
-                return realFetch.apply(this, arguments);
-            }
-
-            try {
-                Object.defineProperty(window, 'fetch', {
-                    configurable: true,
-                    enumerable: true,
-                    get: function() { return ghostFetch; },
-                    set: function(fn) {
-                        if (fn !== ghostFetch) {
-                            realFetch = fn;
+                function extractText(data) {
+                    if (!data) return '';
+                    if (typeof data === 'string') return data;
+                    try {
+                        if (data instanceof URLSearchParams) {
+                            return data.toString();
                         }
-                    }
-                });
-            } catch(e) {
-                window.fetch = ghostFetch;
-            }
-
-            var realOpen = XMLHttpRequest.prototype.open;
-            var realSend = XMLHttpRequest.prototype.send;
-
-            XMLHttpRequest.prototype.open = function(method, url) {
-                this.__ghostUrl = url;
-                this.__ghostMethod = method;
-                return realOpen.apply(this, arguments);
-            };
-
-            XMLHttpRequest.prototype.send = function(body) {
-                if (isSeenRequest(this.__ghostUrl, body)) {
-                    notifyBlocked('XHR', this.__ghostUrl);
-                    var self = this;
-                    setTimeout(function() {
-                        try {
-                            Object.defineProperty(self, 'readyState', { value: 4, writable: true });
-                            Object.defineProperty(self, 'status', { value: 200, writable: true });
-                            Object.defineProperty(self, 'statusText', { value: 'OK', writable: true });
-                            Object.defineProperty(self, 'responseText', {
-                                value: '{"data":{"polaris_stories_seen":{"status":"OK"},"polaris_stories_v3_seen":{"status":"OK"}},"status":"ok"}',
-                                writable: true
-                            });
-                        } catch(e) {}
-                        if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
-                        if (typeof self.onload === 'function') self.onload();
-                    }, 10);
-                    return;
+                        if (data instanceof FormData) {
+                            var res = '';
+                            for (var pair of data.entries()) {
+                                res += ' ' + pair[0] + '=' + pair[1];
+                            }
+                            return res;
+                        }
+                        if (typeof data === 'object') {
+                            return JSON.stringify(data);
+                        }
+                    } catch(e) {}
+                    return String(data);
                 }
-                return realSend.apply(this, arguments);
-            };
 
-            if (navigator && navigator.sendBeacon) {
-                var realBeacon = navigator.sendBeacon;
-                navigator.sendBeacon = function(url, data) {
-                    if (isSeenRequest(url, data)) {
-                        notifyBlocked('sendBeacon', url);
-                        return true;
-                    }
-                    return realBeacon.apply(this, arguments);
+                function isSeenRequest(url, body) {
+                    try {
+                        if (window.__ghostModeEnabled === false) return false;
+
+                        var sUrl = (url ? (typeof url === 'string' ? url : (url.url || String(url))) : '').toLowerCase();
+                        var sBody = extractText(body).toLowerCase();
+
+                        if (sBody.indexOf('polarisstoriesv3seenmutation') !== -1 ||
+                            sBody.indexOf('polarisstoriesseenmutation') !== -1 ||
+                            sBody.indexOf('storiesseenmutation') !== -1 ||
+                            sBody.indexOf('polarisstoryseenmutation') !== -1 ||
+                            sBody.indexOf('polarisstoriesseen') !== -1 ||
+                            sBody.indexOf('polarisstoriesv3seen') !== -1 ||
+                            sBody.indexOf('storyseen') !== -1 ||
+                            sBody.indexOf('story_seen') !== -1 ||
+                            sBody.indexOf('stories_seen') !== -1 ||
+                            sBody.indexOf('stories/reel/seen') !== -1 ||
+                            sBody.indexOf('media/seen') !== -1 ||
+                            sBody.indexOf('seenmarker') !== -1 ||
+                            (sBody.indexOf('seen_at') !== -1 && sBody.indexOf('reel') !== -1) ||
+                            (sBody.indexOf('max_seen_at') !== -1 && sBody.indexOf('reel') !== -1) ||
+                            (sBody.indexOf('reel_media_id') !== -1 && sBody.indexOf('seen') !== -1)
+                        ) {
+                            return true;
+                        }
+
+                        if (sUrl.indexOf('/stories/reel/seen') !== -1 ||
+                            sUrl.indexOf('/media/seen') !== -1 ||
+                            sUrl.indexOf('/stories/seen') !== -1 ||
+                            sUrl.indexOf('seenmarker') !== -1 ||
+                            sUrl.indexOf('polarisstoriesv3seen') !== -1 ||
+                            sUrl.indexOf('polarisstoriesseen') !== -1 ||
+                            sUrl.indexOf('storiesseenmutation') !== -1 ||
+                            sUrl.indexOf('/api/v1/stories/reel/seen') !== -1 ||
+                            sUrl.indexOf('/api/v1/media/seen') !== -1
+                        ) {
+                            return true;
+                        }
+                    } catch(e) {}
+                    return false;
+                }
+
+                function createFakeSuccessResponse() {
+                    return new Response(JSON.stringify({
+                        data: {
+                            polaris_stories_v3_seen: { status: 'OK', __typename: 'PolarisStoriesV3SeenMutationPayload' },
+                            polaris_stories_seen: { status: 'OK', __typename: 'PolarisStoriesSeenMutationPayload' },
+                            story_seen: { status: 'OK' }
+                        },
+                        status: 'ok'
+                    }), {
+                        status: 200,
+                        statusText: 'OK',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        }
+                    });
+                }
+
+                var realFetch = window.fetch;
+                if (typeof realFetch === 'function') {
+                    window.fetch = async function(resource, init) {
+                        try {
+                            var url = (resource && resource.url) ? resource.url : resource;
+                            var body = init ? init.body : (resource && resource.body);
+
+                            if (!body && resource && typeof resource.clone === 'function' && resource.method === 'POST') {
+                                try {
+                                    var clone = resource.clone();
+                                    body = await clone.text();
+                                } catch(e) {}
+                            }
+
+                            if (isSeenRequest(url, body)) {
+                                notifyBlocked('fetch', url);
+                                return createFakeSuccessResponse();
+                            }
+                        } catch(e) {}
+
+                        return realFetch.apply(window, arguments);
+                    };
+                }
+
+                var realOpen = XMLHttpRequest.prototype.open;
+                var realSend = XMLHttpRequest.prototype.send;
+
+                XMLHttpRequest.prototype.open = function(method, url) {
+                    try {
+                        this.__ghostUrl = url;
+                        this.__ghostMethod = method;
+                    } catch(e) {}
+                    return realOpen.apply(this, arguments);
                 };
+
+                XMLHttpRequest.prototype.send = function(body) {
+                    try {
+                        if (isSeenRequest(this.__ghostUrl, body)) {
+                            notifyBlocked('XHR', this.__ghostUrl);
+                            var self = this;
+                            setTimeout(function() {
+                                try {
+                                    Object.defineProperty(self, 'readyState', { value: 4, writable: true });
+                                    Object.defineProperty(self, 'status', { value: 200, writable: true });
+                                    Object.defineProperty(self, 'statusText', { value: 'OK', writable: true });
+                                    Object.defineProperty(self, 'responseText', {
+                                        value: '{"data":{"polaris_stories_seen":{"status":"OK"},"polaris_stories_v3_seen":{"status":"OK"}},"status":"ok"}',
+                                        writable: true
+                                    });
+                                } catch(e) {}
+                                if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+                                if (typeof self.onload === 'function') self.onload();
+                            }, 10);
+                            return;
+                        }
+                    } catch(e) {}
+                    return realSend.apply(this, arguments);
+                };
+
+                if (navigator && typeof navigator.sendBeacon === 'function') {
+                    var realBeacon = navigator.sendBeacon;
+                    navigator.sendBeacon = function(url, data) {
+                        try {
+                            if (isSeenRequest(url, data)) {
+                                notifyBlocked('sendBeacon', url);
+                                return true;
+                            }
+                        } catch(e) {}
+                        return realBeacon.apply(navigator, arguments);
+                    };
+                }
+            } catch(fatal) {
+                console.error('👻 GhostMode init error:', fatal);
             }
         })();
     """.trimIndent()
@@ -250,13 +250,12 @@ fun WebScreen() {
         webViewInstance?.loadUrl(targetUrl)
     }
 
-    // Jeda eksekusi JavaScript & timer WebView saat pengguna berpindah tab untuk hemat baterai
+    // Resume WebView lifecycle without pausing global timers
     DisposableEffect(Unit) {
         webViewInstance?.onResume()
         webViewInstance?.resumeTimers()
         onDispose {
             webViewInstance?.onPause()
-            webViewInstance?.pauseTimers()
         }
     }
 
@@ -477,6 +476,13 @@ fun WebScreen() {
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
 
+                        resumeTimers()
+                        onResume()
+
+                        val cookieManager = android.webkit.CookieManager.getInstance()
+                        cookieManager.setAcceptCookie(true)
+                        cookieManager.setAcceptThirdPartyCookies(this, true)
+
                         settings.apply {
                             javaScriptEnabled = true
                             domStorageEnabled = true
@@ -489,6 +495,10 @@ fun WebScreen() {
                             cacheMode = WebSettings.LOAD_DEFAULT
                             userAgentString = desktopUA
                             textZoom = 100
+                            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            mediaPlaybackRequiresUserGesture = false
+                            allowFileAccess = true
+                            allowContentAccess = true
                         }
 
                         setInitialScale(100)
@@ -512,13 +522,6 @@ fun WebScreen() {
                                 }
                             }
 
-                            override fun onLoadResource(view: WebView?, url: String?) {
-                                super.onLoadResource(view, url)
-                                if (selectedWeb == "INSTAGRAM") {
-                                    view?.evaluateJavascript(getInstagramGhostModeScript(isGhostModeEnabled), null)
-                                }
-                            }
-
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
                                 if (selectedWeb == "INSTAGRAM") {
@@ -527,10 +530,11 @@ fun WebScreen() {
                             }
 
                             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                                if (isGhostModeEnabled && request != null) {
+                                if (selectedWeb == "INSTAGRAM" && isGhostModeEnabled && request != null) {
                                     val url = request.url.toString().lowercase()
                                     // Intersep dan blokir semua request seen tracking di Instagram
-                                    if (url.contains("/api/v1/stories/reel/seen") ||
+                                    if (url.contains("instagram.com") && (
+                                        url.contains("/api/v1/stories/reel/seen") ||
                                         url.contains("/api/v1/media/seen") ||
                                         url.contains("/stories/reel/seen") ||
                                         url.contains("/stories/seen") ||
@@ -539,9 +543,8 @@ fun WebScreen() {
                                         url.contains("polarisstoriesseen") ||
                                         url.contains("polarisstoriesv3seen") ||
                                         url.contains("storiesseenmutation") ||
-                                        url.contains("story_view") ||
-                                        (url.contains("/graphql") && (url.contains("seen") || url.contains("story_view")))
-                                    ) {
+                                        (url.contains("/graphql") && url.contains("seen"))
+                                    )) {
                                         android.util.Log.i("GhostMode", "👻 [BLOCKED by Native Interceptor] $url")
                                         return WebResourceResponse(
                                             "application/json",
